@@ -5,8 +5,9 @@ struct BezelCastApp: App {
     var body: some Scene {
         WindowGroup("Bezel Cast") {
             ContentView()
-                .frame(minWidth: 320, minHeight: 600)
+                .frame(minWidth: 360, minHeight: 720)
         }
+        .defaultSize(width: 420, height: 820)
         .windowResizability(.contentSize)
     }
 }

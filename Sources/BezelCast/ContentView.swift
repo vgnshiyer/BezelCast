@@ -5,14 +5,15 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color(white: 0.93).ignoresSafeArea()
             if let session = capture.session {
-                CapturePreview(session: session)
+                BezelView(session: session)
+                    .padding(24)
             } else {
                 VStack(spacing: 12) {
                     ProgressView().controlSize(.large)
                     Text(capture.status)
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                 }
