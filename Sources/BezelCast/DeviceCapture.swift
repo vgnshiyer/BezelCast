@@ -8,18 +8,19 @@ import Combine
 final class DeviceCapture: ObservableObject {
     @Published private(set) var session: AVCaptureSession?
     @Published private(set) var status = "Plug in an iPhone via USB.\nTap Trust if prompted."
+    @Published private(set) var isRecording = false
 
     private var connectObserver: NSObjectProtocol?
     private var disconnectObserver: NSObjectProtocol?
     private let frameTap = FrameTap()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "BezelCast.video", qos: .userInitiated)
-    private let ciContext = CIContext()
+    private let renderer = BezelRenderer(ciContext: CIContext())
+    private var recorder: BezelRecorder?
 
     init() {
         enableiOSScreenCaptureDevices()
 
-        // A discovery call must happen before AVCaptureDeviceWasConnected fires.
         let warmup = AVCaptureDevice.DiscoverySession(
             deviceTypes: [.external],
             mediaType: .muxed,
@@ -80,70 +81,86 @@ final class DeviceCapture: ObservableObject {
     }
 
     private func detach() {
+        if isRecording {
+            discardRecording()
+        }
         session?.stopRunning()
         session = nil
         frameTap.clear()
         status = "Disconnected. Plug in an iPhone."
     }
 
+    // MARK: - Screenshot
+
     func saveScreenshot() {
         guard let buffer = frameTap.latest,
-              let image = renderBezeled(from: buffer) else { return }
+              let image = renderer.screenshot(from: buffer) else { return }
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = "BezelCast-\(timestamp()).png"
         panel.canCreateDirectories = true
-
         guard panel.runModal() == .OK, let url = panel.url else { return }
         writePNG(image, to: url)
     }
 
-    private func renderBezeled(from buffer: CVPixelBuffer) -> NSImage? {
-        let ciImage = CIImage(cvPixelBuffer: buffer)
-        let videoSize = ciImage.extent.size
-        guard videoSize.width > 0, videoSize.height > 0 else { return nil }
+    // MARK: - Recording
 
-        let frameThickness = videoSize.width * 0.026
-        let outerWidth = videoSize.width + 2 * frameThickness
-        let outerHeight = videoSize.height + 2 * frameThickness
-        let outerCorner = outerWidth * 0.16
-        let innerCorner = max(outerCorner - frameThickness, 0)
-        let islandWidth = outerWidth * 0.32
-        let islandHeight = outerWidth * 0.096
-        let islandTopOffset = frameThickness + outerWidth * 0.025
-
-        guard let cgVideo = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return nil }
-
-        let outerSize = NSSize(width: outerWidth, height: outerHeight)
-        let image = NSImage(size: outerSize)
-        image.lockFocus()
-        defer { image.unlockFocus() }
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return nil }
-
-        ctx.setFillColor(NSColor.black.cgColor)
-        ctx.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: outerSize),
-                           cornerWidth: outerCorner, cornerHeight: outerCorner, transform: nil))
-        ctx.fillPath()
-
-        let innerRect = CGRect(x: frameThickness, y: frameThickness,
-                               width: videoSize.width, height: videoSize.height)
-        ctx.saveGState()
-        ctx.addPath(CGPath(roundedRect: innerRect, cornerWidth: innerCorner, cornerHeight: innerCorner, transform: nil))
-        ctx.clip()
-        ctx.draw(cgVideo, in: innerRect)
-        ctx.restoreGState()
-
-        let islandRect = CGRect(x: (outerWidth - islandWidth) / 2,
-                                y: outerHeight - islandTopOffset - islandHeight,
-                                width: islandWidth, height: islandHeight)
-        ctx.setFillColor(NSColor.black.cgColor)
-        ctx.addPath(CGPath(roundedRect: islandRect,
-                           cornerWidth: islandHeight / 2, cornerHeight: islandHeight / 2, transform: nil))
-        ctx.fillPath()
-
-        return image
+    func startRecording() {
+        guard recorder == nil, session != nil else { return }
+        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("BezelCast-\(UUID().uuidString).mp4")
+        let recorder = BezelRecorder(url: tempURL, renderer: renderer)
+        self.recorder = recorder
+        frameTap.setRecorder(recorder)
+        isRecording = true
     }
+
+    func stopRecording() {
+        guard let recorder else { return }
+        isRecording = false
+        frameTap.setRecorder(nil)
+        self.recorder = nil
+
+        recorder.stop { [weak self] tempURL in
+            DispatchQueue.main.async {
+                self?.promptToSaveRecording(tempURL: tempURL)
+            }
+        }
+    }
+
+    private func discardRecording() {
+        guard let recorder else { return }
+        isRecording = false
+        frameTap.setRecorder(nil)
+        self.recorder = nil
+        recorder.stop { tempURL in
+            if let tempURL { try? FileManager.default.removeItem(at: tempURL) }
+        }
+    }
+
+    private func promptToSaveRecording(tempURL: URL?) {
+        guard let tempURL else { return }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.mpeg4Movie]
+        panel.nameFieldStringValue = "BezelCast-\(timestamp()).mp4"
+        panel.canCreateDirectories = true
+
+        if panel.runModal() == .OK, let dest = panel.url {
+            try? FileManager.default.removeItem(at: dest)
+            do {
+                try FileManager.default.moveItem(at: tempURL, to: dest)
+                NSWorkspace.shared.activateFileViewerSelecting([dest])
+            } catch {
+                print("Failed to move recording: \(error)")
+            }
+        } else {
+            try? FileManager.default.removeItem(at: tempURL)
+        }
+    }
+
+    // MARK: - Helpers
 
     private func writePNG(_ image: NSImage, to url: URL) {
         guard let tiff = image.tiffRepresentation,

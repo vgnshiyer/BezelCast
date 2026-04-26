@@ -29,6 +29,20 @@ struct ContentView: View {
                 .keyboardShortcut("s", modifiers: [.command, .shift])
                 .disabled(capture.session == nil)
             }
+            ToolbarItem {
+                Button {
+                    if capture.isRecording {
+                        capture.stopRecording()
+                    } else {
+                        capture.startRecording()
+                    }
+                } label: {
+                    Label(capture.isRecording ? "Stop" : "Record",
+                          systemImage: capture.isRecording ? "stop.circle.fill" : "record.circle")
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(capture.session == nil)
+            }
         }
     }
 }
