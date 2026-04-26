@@ -5,6 +5,9 @@ import CoreImage
 struct BezelGeometry {
     static let frameRatio: CGFloat = 0.025
     static let cornerRatio: CGFloat = 0.16
+    static let islandWidthRatio: CGFloat = 0.32
+    static let islandHeightRatio: CGFloat = 0.09
+    static let islandTopRatio: CGFloat = 0.03
 
     let videoSize: CGSize
 
@@ -17,6 +20,20 @@ struct BezelGeometry {
     var frameThickness: CGFloat { outerWidth * Self.frameRatio }
     var outerCorner: CGFloat { outerWidth * Self.cornerRatio }
     var innerCorner: CGFloat { max(outerCorner - frameThickness, 0) }
+
+    var innerRect: CGRect {
+        CGRect(x: frameThickness, y: frameThickness,
+               width: videoSize.width, height: videoSize.height)
+    }
+
+    var islandRect: CGRect {
+        let w = videoSize.width * Self.islandWidthRatio
+        let h = videoSize.width * Self.islandHeightRatio
+        let topOffset = videoSize.width * Self.islandTopRatio
+        return CGRect(x: (outerWidth - w) / 2,
+                      y: outerHeight - frameThickness - topOffset - h,
+                      width: w, height: h)
+    }
 }
 
 struct BezelRenderer {
@@ -47,19 +64,26 @@ struct BezelRenderer {
                                   bitsPerComponent: 8, bytesPerRow: 0,
                                   space: colorSpace, bitmapInfo: bitmapInfo) else { return nil }
 
-        ctx.clear(CGRect(x: 0, y: 0, width: width, height: height))
+        let fullRect = CGRect(x: 0, y: 0, width: width, height: height)
+        ctx.clear(fullRect)
 
-        // Bezel ring: outer rounded rect minus inner rounded rect, even-odd fill.
-        let combined = CGMutablePath()
-        combined.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: g.outerSize),
-                                cornerWidth: g.outerCorner, cornerHeight: g.outerCorner, transform: nil))
-        combined.addPath(CGPath(roundedRect: CGRect(x: g.frameThickness, y: g.frameThickness,
-                                                    width: videoSize.width, height: videoSize.height),
-                                cornerWidth: g.innerCorner, cornerHeight: g.innerCorner, transform: nil))
-
+        // Fill the entire output rectangle with black so screen content cannot
+        // leak past the rounded device shape into the outer corners.
         ctx.setFillColor(NSColor.black.cgColor)
-        ctx.addPath(combined)
-        ctx.fillPath(using: .evenOdd)
+        ctx.fill(fullRect)
+
+        // Cut out the inner rounded rect — the only place the video shows.
+        ctx.saveGState()
+        ctx.addPath(CGPath(roundedRect: g.innerRect, cornerWidth: g.innerCorner, cornerHeight: g.innerCorner, transform: nil))
+        ctx.clip()
+        ctx.clear(g.innerRect)
+        ctx.restoreGState()
+
+        // Re-fill the Dynamic Island as solid black on top of the screen.
+        ctx.setFillColor(NSColor.black.cgColor)
+        ctx.addPath(CGPath(roundedRect: g.islandRect,
+                           cornerWidth: g.islandRect.height / 2, cornerHeight: g.islandRect.height / 2, transform: nil))
+        ctx.fillPath()
 
         return ctx.makeImage()
     }
@@ -82,12 +106,15 @@ struct BezelRenderer {
                            cornerWidth: g.outerCorner, cornerHeight: g.outerCorner, transform: nil))
         ctx.fillPath()
 
-        let innerRect = CGRect(x: g.frameThickness, y: g.frameThickness,
-                               width: g.videoSize.width, height: g.videoSize.height)
         ctx.saveGState()
-        ctx.addPath(CGPath(roundedRect: innerRect, cornerWidth: g.innerCorner, cornerHeight: g.innerCorner, transform: nil))
+        ctx.addPath(CGPath(roundedRect: g.innerRect, cornerWidth: g.innerCorner, cornerHeight: g.innerCorner, transform: nil))
         ctx.clip()
-        ctx.draw(video, in: innerRect)
+        ctx.draw(video, in: g.innerRect)
         ctx.restoreGState()
+
+        ctx.setFillColor(NSColor.black.cgColor)
+        ctx.addPath(CGPath(roundedRect: g.islandRect,
+                           cornerWidth: g.islandRect.height / 2, cornerHeight: g.islandRect.height / 2, transform: nil))
+        ctx.fillPath()
     }
 }
