@@ -3,20 +3,20 @@ import AppKit
 import CoreImage
 
 struct BezelGeometry {
+    static let frameRatio: CGFloat = 0.025
+    static let cornerRatio: CGFloat = 0.16
+
     let videoSize: CGSize
 
-    private var rawOuterWidth: CGFloat { videoSize.width + 2 * frameThickness }
+    private var rawOuterWidth: CGFloat { videoSize.width / (1 - 2 * Self.frameRatio) }
     private var rawOuterHeight: CGFloat { videoSize.height + 2 * frameThickness }
 
-    var frameThickness: CGFloat { videoSize.width * 0.026 }
     var outerWidth: CGFloat { (rawOuterWidth / 2).rounded() * 2 }
     var outerHeight: CGFloat { (rawOuterHeight / 2).rounded() * 2 }
     var outerSize: CGSize { CGSize(width: outerWidth, height: outerHeight) }
-    var outerCorner: CGFloat { outerWidth * 0.16 }
+    var frameThickness: CGFloat { outerWidth * Self.frameRatio }
+    var outerCorner: CGFloat { outerWidth * Self.cornerRatio }
     var innerCorner: CGFloat { max(outerCorner - frameThickness, 0) }
-    var islandWidth: CGFloat { outerWidth * 0.32 }
-    var islandHeight: CGFloat { outerWidth * 0.096 }
-    var islandTopOffset: CGFloat { frameThickness + outerWidth * 0.025 }
 }
 
 struct BezelRenderer {
@@ -49,7 +49,7 @@ struct BezelRenderer {
 
         ctx.clear(CGRect(x: 0, y: 0, width: width, height: height))
 
-        // Bezel ring: outer rounded rect minus inner rounded rect, even-odd fill
+        // Bezel ring: outer rounded rect minus inner rounded rect, even-odd fill.
         let combined = CGMutablePath()
         combined.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: g.outerSize),
                                 cornerWidth: g.outerCorner, cornerHeight: g.outerCorner, transform: nil))
@@ -61,14 +61,6 @@ struct BezelRenderer {
         ctx.addPath(combined)
         ctx.fillPath(using: .evenOdd)
 
-        // Dynamic island
-        let islandRect = CGRect(x: (g.outerWidth - g.islandWidth) / 2,
-                                y: g.outerHeight - g.islandTopOffset - g.islandHeight,
-                                width: g.islandWidth, height: g.islandHeight)
-        ctx.addPath(CGPath(roundedRect: islandRect,
-                           cornerWidth: g.islandHeight / 2, cornerHeight: g.islandHeight / 2, transform: nil))
-        ctx.fillPath()
-
         return ctx.makeImage()
     }
 
@@ -76,9 +68,11 @@ struct BezelRenderer {
                    chrome: CIImage,
                    geometry g: BezelGeometry,
                    into output: CVPixelBuffer) {
+        let outputRect = CGRect(origin: .zero, size: g.outerSize)
+        let bg = CIImage(color: .black).cropped(to: outputRect)
         let videoCI = CIImage(cvPixelBuffer: buffer)
             .transformed(by: CGAffineTransform(translationX: g.frameThickness, y: g.frameThickness))
-        let composite = chrome.composited(over: videoCI)
+        let composite = chrome.composited(over: videoCI.composited(over: bg))
         ciContext.render(composite, to: output)
     }
 
@@ -95,13 +89,5 @@ struct BezelRenderer {
         ctx.clip()
         ctx.draw(video, in: innerRect)
         ctx.restoreGState()
-
-        let islandRect = CGRect(x: (g.outerWidth - g.islandWidth) / 2,
-                                y: g.outerHeight - g.islandTopOffset - g.islandHeight,
-                                width: g.islandWidth, height: g.islandHeight)
-        ctx.setFillColor(NSColor.black.cgColor)
-        ctx.addPath(CGPath(roundedRect: islandRect,
-                           cornerWidth: g.islandHeight / 2, cornerHeight: g.islandHeight / 2, transform: nil))
-        ctx.fillPath()
     }
 }

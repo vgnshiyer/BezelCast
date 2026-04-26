@@ -10,23 +10,16 @@ struct BezelView: View {
         GeometryReader { geo in
             let width = min(geo.size.width, geo.size.height * screenAspect)
             let height = width / screenAspect
-            let cornerRadius = width * 0.16
-            let frame = width * 0.025
-            let islandWidth = width * 0.32
-            let islandHeight = islandWidth * 0.30
+            let cornerRadius = width * BezelGeometry.cornerRatio
+            let frame = width * BezelGeometry.frameRatio
 
-            ZStack(alignment: .top) {
+            ZStack {
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(.black)
 
                 CapturePreview(session: session)
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius - frame))
                     .padding(frame)
-
-                Capsule()
-                    .fill(.black)
-                    .frame(width: islandWidth, height: islandHeight)
-                    .padding(.top, frame + width * 0.025)
             }
             .frame(width: width, height: height)
             .shadow(color: .black.opacity(0.25), radius: 24, y: 8)

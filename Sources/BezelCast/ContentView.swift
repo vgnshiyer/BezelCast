@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var capture = DeviceCapture()
+    @ObservedObject var capture: DeviceCapture
 
     var body: some View {
         ZStack {
@@ -26,7 +26,6 @@ struct ContentView: View {
                 } label: {
                     Label("Capture", systemImage: "camera")
                 }
-                .keyboardShortcut("s", modifiers: [.command, .shift])
                 .disabled(capture.session == nil)
             }
             ToolbarItem {
@@ -40,7 +39,7 @@ struct ContentView: View {
                     Label(capture.isRecording ? "Stop" : "Record",
                           systemImage: capture.isRecording ? "stop.circle.fill" : "record.circle")
                 }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .tint(capture.isRecording ? .red : nil)
                 .disabled(capture.session == nil)
             }
         }
