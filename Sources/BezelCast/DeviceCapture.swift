@@ -104,7 +104,7 @@ final class DeviceCapture: ObservableObject {
                 guard let self else { return }
                 let now = ProcessInfo.processInfo.systemUptime
                 let last = self.frameTap.lastFrameTimestamp
-                let live = last > 0 && (now - last) < 0.5
+                let live = last > 0 && (now - last) < 1.0
                 if self.isLive != live {
                     self.isLive = live
                 }

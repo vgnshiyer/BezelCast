@@ -53,9 +53,10 @@ struct BezelRenderer {
         return image
     }
 
-    /// Bezel ring + Dynamic Island, with everything outside the rounded device transparent.
-    /// Used for HEVC-with-alpha recording so the .mov has transparent corners.
-    func chromeImage(for videoSize: CGSize) -> CGImage? {
+    /// Solid black rounded device shape, alpha 1 inside, alpha 0 outside.
+    /// Acts as the underlay for the recording so alpha is 1 across the
+    /// entire rounded device — no anti-aliasing gap at the screen edge.
+    func backplateImage(for videoSize: CGSize) -> CGImage? {
         let g = BezelGeometry(videoSize: videoSize)
         let width = Int(g.outerWidth)
         let height = Int(g.outerHeight)
@@ -68,27 +69,17 @@ struct BezelRenderer {
 
         ctx.clear(CGRect(x: 0, y: 0, width: width, height: height))
 
-        // Bezel ring (between outer and inner rounded rects), even-odd fill.
-        let combined = CGMutablePath()
-        combined.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: g.outerSize),
-                                cornerWidth: g.outerCorner, cornerHeight: g.outerCorner, transform: nil))
-        combined.addPath(CGPath(roundedRect: g.innerRect,
-                                cornerWidth: g.innerCorner, cornerHeight: g.innerCorner, transform: nil))
-
         ctx.setFillColor(NSColor.black.cgColor)
-        ctx.addPath(combined)
-        ctx.fillPath(using: .evenOdd)
-
-        // Dynamic Island.
-        ctx.addPath(CGPath(roundedRect: g.islandRect,
-                           cornerWidth: g.islandRect.height / 2, cornerHeight: g.islandRect.height / 2, transform: nil))
+        ctx.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: g.outerSize),
+                           cornerWidth: g.outerCorner, cornerHeight: g.outerCorner, transform: nil))
         ctx.fillPath()
 
         return ctx.makeImage()
     }
 
-    /// Alpha mask matching the rounded screen area. Used to clip the video so
-    /// it can't leak into the corner triangles outside the rounded device.
+    /// Alpha mask: opaque inside the rounded screen *minus* the Dynamic
+    /// Island (so the island shows the backplate through). Used to clip
+    /// the video so it can't leak past the rounded device edge.
     func screenMaskImage(for videoSize: CGSize) -> CGImage? {
         let g = BezelGeometry(videoSize: videoSize)
         let width = Int(g.outerWidth)
@@ -107,21 +98,26 @@ struct BezelRenderer {
                            cornerWidth: g.innerCorner, cornerHeight: g.innerCorner, transform: nil))
         ctx.fillPath()
 
+        ctx.saveGState()
+        ctx.addPath(CGPath(roundedRect: g.islandRect,
+                           cornerWidth: g.islandRect.height / 2, cornerHeight: g.islandRect.height / 2, transform: nil))
+        ctx.clip()
+        ctx.clear(g.islandRect)
+        ctx.restoreGState()
+
         return ctx.makeImage()
     }
 
     func composite(video buffer: CVPixelBuffer,
-                   chrome: CIImage,
+                   backplate: CIImage,
                    mask: CIImage,
                    geometry g: BezelGeometry,
                    into output: CVPixelBuffer) {
-        let outputRect = CGRect(origin: .zero, size: g.outerSize)
-        let bg = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0)).cropped(to: outputRect)
         let videoCI = CIImage(cvPixelBuffer: buffer)
             .transformed(by: CGAffineTransform(translationX: g.frameThickness, y: g.frameThickness))
         let maskedVideo = videoCI.applyingFilter("CISourceInCompositing",
                                                  parameters: [kCIInputBackgroundImageKey: mask])
-        let composite = chrome.composited(over: maskedVideo.composited(over: bg))
+        let composite = maskedVideo.composited(over: backplate)
         ciContext.render(composite, to: output)
     }
 

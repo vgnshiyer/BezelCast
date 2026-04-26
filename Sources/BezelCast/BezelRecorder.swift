@@ -10,7 +10,7 @@ final class BezelRecorder: @unchecked Sendable {
     private var writer: AVAssetWriter?
     private var input: AVAssetWriterInput?
     private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
-    private var chrome: CIImage?
+    private var backplate: CIImage?
     private var mask: CIImage?
     private var geometry: BezelGeometry?
     private var started = false
@@ -31,13 +31,13 @@ final class BezelRecorder: @unchecked Sendable {
         }
 
         guard started, let adaptor, let pool = adaptor.pixelBufferPool,
-              let chrome, let mask, let geometry, let input, input.isReadyForMoreMediaData else { return }
+              let backplate, let mask, let geometry, let input, input.isReadyForMoreMediaData else { return }
 
         var outputBuffer: CVPixelBuffer?
         let result = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &outputBuffer)
         guard result == kCVReturnSuccess, let output = outputBuffer else { return }
 
-        renderer.composite(video: buffer, chrome: chrome, mask: mask, geometry: geometry, into: output)
+        renderer.composite(video: buffer, backplate: backplate, mask: mask, geometry: geometry, into: output)
         adaptor.append(output, withPresentationTime: presentationTime)
     }
 
@@ -66,7 +66,7 @@ final class BezelRecorder: @unchecked Sendable {
         let videoSize = CGSize(width: CVPixelBufferGetWidth(firstBuffer),
                                height: CVPixelBufferGetHeight(firstBuffer))
         let g = BezelGeometry(videoSize: videoSize)
-        guard let chromeCG = renderer.chromeImage(for: videoSize),
+        guard let backplateCG = renderer.backplateImage(for: videoSize),
               let maskCG = renderer.screenMaskImage(for: videoSize) else { return }
 
         do {
@@ -105,7 +105,7 @@ final class BezelRecorder: @unchecked Sendable {
             self.writer = writer
             self.input = input
             self.adaptor = adaptor
-            self.chrome = CIImage(cgImage: chromeCG)
+            self.backplate = CIImage(cgImage: backplateCG)
             self.mask = CIImage(cgImage: maskCG)
             self.geometry = g
             self.started = true
