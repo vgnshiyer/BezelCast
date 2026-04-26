@@ -19,5 +19,16 @@ struct ContentView: View {
                 }
             }
         }
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    capture.saveScreenshot()
+                } label: {
+                    Label("Capture", systemImage: "camera")
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .disabled(capture.session == nil)
+            }
+        }
     }
 }
