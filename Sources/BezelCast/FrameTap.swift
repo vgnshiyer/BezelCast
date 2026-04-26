@@ -1,14 +1,21 @@
 @preconcurrency import AVFoundation
 import CoreVideo
+import Foundation
 
 final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
     private let lock = NSLock()
     private var buffer: CVPixelBuffer?
     private var recorder: BezelRecorder?
+    private var lastTimestamp: TimeInterval = 0
 
     var latest: CVPixelBuffer? {
         lock.lock(); defer { lock.unlock() }
         return buffer
+    }
+
+    var lastFrameTimestamp: TimeInterval {
+        lock.lock(); defer { lock.unlock() }
+        return lastTimestamp
     }
 
     func setRecorder(_ recorder: BezelRecorder?) {
@@ -19,6 +26,7 @@ final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @u
     func clear() {
         lock.lock(); defer { lock.unlock() }
         buffer = nil
+        lastTimestamp = 0
     }
 
     func captureOutput(_ output: AVCaptureOutput,
@@ -29,6 +37,7 @@ final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @u
 
         lock.lock()
         buffer = pixelBuffer
+        lastTimestamp = ProcessInfo.processInfo.systemUptime
         let recorder = self.recorder
         lock.unlock()
 

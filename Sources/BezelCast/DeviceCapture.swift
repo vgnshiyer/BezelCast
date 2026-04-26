@@ -9,6 +9,7 @@ final class DeviceCapture: ObservableObject {
     @Published private(set) var session: AVCaptureSession?
     @Published private(set) var status = "Plug in an iPhone via USB.\nTap Trust if prompted."
     @Published private(set) var isRecording = false
+    @Published private(set) var isLive = false
 
     private var connectObserver: NSObjectProtocol?
     private var disconnectObserver: NSObjectProtocol?
@@ -17,6 +18,7 @@ final class DeviceCapture: ObservableObject {
     private let videoQueue = DispatchQueue(label: "BezelCast.video", qos: .userInitiated)
     private let renderer = BezelRenderer(ciContext: CIContext())
     private var recorder: BezelRecorder?
+    private var livenessTask: Task<Void, Never>?
 
     init() {
         enableiOSScreenCaptureDevices()
@@ -78,16 +80,37 @@ final class DeviceCapture: ObservableObject {
         }
         self.session = session
         self.status = device.localizedName
+        startLivenessCheck()
     }
 
     private func detach() {
         if isRecording {
             discardRecording()
         }
+        livenessTask?.cancel()
+        livenessTask = nil
+        isLive = false
         session?.stopRunning()
         session = nil
         frameTap.clear()
         status = "Disconnected. Plug in an iPhone."
+    }
+
+    /// Polls the FrameTap to detect when the iPhone stops streaming (e.g. screen lock).
+    private func startLivenessCheck() {
+        livenessTask?.cancel()
+        livenessTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let now = ProcessInfo.processInfo.systemUptime
+                let last = self.frameTap.lastFrameTimestamp
+                let live = last > 0 && (now - last) < 0.5
+                if self.isLive != live {
+                    self.isLive = live
+                }
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+        }
     }
 
     // MARK: - Screenshot
@@ -109,7 +132,7 @@ final class DeviceCapture: ObservableObject {
     func startRecording() {
         guard recorder == nil, session != nil else { return }
         let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("BezelCast-\(UUID().uuidString).mp4")
+            .appendingPathComponent("BezelCast-\(UUID().uuidString).mov")
         let recorder = BezelRecorder(url: tempURL, renderer: renderer)
         self.recorder = recorder
         frameTap.setRecorder(recorder)
@@ -143,8 +166,8 @@ final class DeviceCapture: ObservableObject {
         guard let tempURL else { return }
 
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.mpeg4Movie]
-        panel.nameFieldStringValue = "BezelCast-\(timestamp()).mp4"
+        panel.allowedContentTypes = [.quickTimeMovie]
+        panel.nameFieldStringValue = "BezelCast-\(timestamp()).mov"
         panel.canCreateDirectories = true
 
         if panel.runModal() == .OK, let dest = panel.url {

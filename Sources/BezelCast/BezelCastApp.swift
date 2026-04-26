@@ -11,24 +11,5 @@ struct BezelCastApp: App {
         }
         .defaultSize(width: 420, height: 820)
         .windowResizability(.contentSize)
-        .commands {
-            CommandMenu("Capture") {
-                Button("Take Screenshot") {
-                    capture.saveScreenshot()
-                }
-                .keyboardShortcut("s", modifiers: [.command, .shift])
-                .disabled(capture.session == nil)
-
-                Button(capture.isRecording ? "Stop Recording" : "Start Recording") {
-                    if capture.isRecording {
-                        capture.stopRecording()
-                    } else {
-                        capture.startRecording()
-                    }
-                }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(capture.session == nil)
-            }
-        }
     }
 }

@@ -11,6 +11,7 @@ final class BezelRecorder: @unchecked Sendable {
     private var input: AVAssetWriterInput?
     private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
     private var chrome: CIImage?
+    private var mask: CIImage?
     private var geometry: BezelGeometry?
     private var started = false
     private var stopped = false
@@ -30,13 +31,13 @@ final class BezelRecorder: @unchecked Sendable {
         }
 
         guard started, let adaptor, let pool = adaptor.pixelBufferPool,
-              let chrome, let geometry, let input, input.isReadyForMoreMediaData else { return }
+              let chrome, let mask, let geometry, let input, input.isReadyForMoreMediaData else { return }
 
         var outputBuffer: CVPixelBuffer?
         let result = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &outputBuffer)
         guard result == kCVReturnSuccess, let output = outputBuffer else { return }
 
-        renderer.composite(video: buffer, chrome: chrome, geometry: geometry, into: output)
+        renderer.composite(video: buffer, chrome: chrome, mask: mask, geometry: geometry, into: output)
         adaptor.append(output, withPresentationTime: presentationTime)
     }
 
@@ -61,26 +62,21 @@ final class BezelRecorder: @unchecked Sendable {
         }
     }
 
-    private final class WriterBox: @unchecked Sendable {
-        let writer: AVAssetWriter
-        init(_ writer: AVAssetWriter) { self.writer = writer }
-    }
-
     private func startWriting(firstBuffer: CVPixelBuffer, time: CMTime) {
         let videoSize = CGSize(width: CVPixelBufferGetWidth(firstBuffer),
                                height: CVPixelBufferGetHeight(firstBuffer))
         let g = BezelGeometry(videoSize: videoSize)
-        guard let chromeCG = renderer.chromeImage(for: videoSize) else { return }
+        guard let chromeCG = renderer.chromeImage(for: videoSize),
+              let maskCG = renderer.screenMaskImage(for: videoSize) else { return }
 
         do {
-            let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+            let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
 
             let compression: [String: Any] = [
                 AVVideoAverageBitRateKey: 12_000_000,
-                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
             ]
             let settings: [String: Any] = [
-                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoCodecKey: AVVideoCodecType.hevcWithAlpha,
                 AVVideoWidthKey: Int(g.outerWidth),
                 AVVideoHeightKey: Int(g.outerHeight),
                 AVVideoCompressionPropertiesKey: compression,
@@ -110,10 +106,16 @@ final class BezelRecorder: @unchecked Sendable {
             self.input = input
             self.adaptor = adaptor
             self.chrome = CIImage(cgImage: chromeCG)
+            self.mask = CIImage(cgImage: maskCG)
             self.geometry = g
             self.started = true
         } catch {
             print("AVAssetWriter init failed: \(error)")
         }
+    }
+
+    private final class WriterBox: @unchecked Sendable {
+        let writer: AVAssetWriter
+        init(_ writer: AVAssetWriter) { self.writer = writer }
     }
 }

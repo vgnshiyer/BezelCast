@@ -3,17 +3,15 @@ import AVFoundation
 
 struct BezelView: View {
     let session: AVCaptureSession
+    let isLive: Bool
 
-    private let innerAspect: CGFloat = 9.0 / 19.5  // iPhone screen W:H, no letterbox
+    private let innerAspect: CGFloat = 9.0 / 19.5
 
     var body: some View {
         GeometryReader { geo in
             let frameRatio = BezelGeometry.frameRatio
             let cornerRatio = BezelGeometry.cornerRatio
 
-            // Pick outer dimensions so the inner area (after frame padding)
-            // matches the iPhone's screen aspect exactly. Otherwise
-            // AVCaptureVideoPreviewLayer.resizeAspect letterboxes.
             let outerHWRatio = (1 - 2 * frameRatio) / innerAspect + 2 * frameRatio
             let width = min(geo.size.width, geo.size.height / outerHWRatio)
             let height = width * outerHWRatio
@@ -32,6 +30,8 @@ struct BezelView: View {
                 CapturePreview(session: session)
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius - frame))
                     .padding(frame)
+                    .opacity(isLive ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.15), value: isLive)
 
                 Capsule()
                     .fill(.black)

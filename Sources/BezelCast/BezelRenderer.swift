@@ -53,6 +53,8 @@ struct BezelRenderer {
         return image
     }
 
+    /// Bezel ring + Dynamic Island, with everything outside the rounded device transparent.
+    /// Used for HEVC-with-alpha recording so the .mov has transparent corners.
     func chromeImage(for videoSize: CGSize) -> CGImage? {
         let g = BezelGeometry(videoSize: videoSize)
         let width = Int(g.outerWidth)
@@ -64,23 +66,20 @@ struct BezelRenderer {
                                   bitsPerComponent: 8, bytesPerRow: 0,
                                   space: colorSpace, bitmapInfo: bitmapInfo) else { return nil }
 
-        let fullRect = CGRect(x: 0, y: 0, width: width, height: height)
-        ctx.clear(fullRect)
+        ctx.clear(CGRect(x: 0, y: 0, width: width, height: height))
 
-        // Fill the entire output rectangle with black so screen content cannot
-        // leak past the rounded device shape into the outer corners.
+        // Bezel ring (between outer and inner rounded rects), even-odd fill.
+        let combined = CGMutablePath()
+        combined.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: g.outerSize),
+                                cornerWidth: g.outerCorner, cornerHeight: g.outerCorner, transform: nil))
+        combined.addPath(CGPath(roundedRect: g.innerRect,
+                                cornerWidth: g.innerCorner, cornerHeight: g.innerCorner, transform: nil))
+
         ctx.setFillColor(NSColor.black.cgColor)
-        ctx.fill(fullRect)
+        ctx.addPath(combined)
+        ctx.fillPath(using: .evenOdd)
 
-        // Cut out the inner rounded rect — the only place the video shows.
-        ctx.saveGState()
-        ctx.addPath(CGPath(roundedRect: g.innerRect, cornerWidth: g.innerCorner, cornerHeight: g.innerCorner, transform: nil))
-        ctx.clip()
-        ctx.clear(g.innerRect)
-        ctx.restoreGState()
-
-        // Re-fill the Dynamic Island as solid black on top of the screen.
-        ctx.setFillColor(NSColor.black.cgColor)
+        // Dynamic Island.
         ctx.addPath(CGPath(roundedRect: g.islandRect,
                            cornerWidth: g.islandRect.height / 2, cornerHeight: g.islandRect.height / 2, transform: nil))
         ctx.fillPath()
@@ -88,15 +87,41 @@ struct BezelRenderer {
         return ctx.makeImage()
     }
 
+    /// Alpha mask matching the rounded screen area. Used to clip the video so
+    /// it can't leak into the corner triangles outside the rounded device.
+    func screenMaskImage(for videoSize: CGSize) -> CGImage? {
+        let g = BezelGeometry(videoSize: videoSize)
+        let width = Int(g.outerWidth)
+        let height = Int(g.outerHeight)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+
+        guard let ctx = CGContext(data: nil, width: width, height: height,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: colorSpace, bitmapInfo: bitmapInfo) else { return nil }
+
+        ctx.clear(CGRect(x: 0, y: 0, width: width, height: height))
+
+        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.addPath(CGPath(roundedRect: g.innerRect,
+                           cornerWidth: g.innerCorner, cornerHeight: g.innerCorner, transform: nil))
+        ctx.fillPath()
+
+        return ctx.makeImage()
+    }
+
     func composite(video buffer: CVPixelBuffer,
                    chrome: CIImage,
+                   mask: CIImage,
                    geometry g: BezelGeometry,
                    into output: CVPixelBuffer) {
         let outputRect = CGRect(origin: .zero, size: g.outerSize)
-        let bg = CIImage(color: .black).cropped(to: outputRect)
+        let bg = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0)).cropped(to: outputRect)
         let videoCI = CIImage(cvPixelBuffer: buffer)
             .transformed(by: CGAffineTransform(translationX: g.frameThickness, y: g.frameThickness))
-        let composite = chrome.composited(over: videoCI.composited(over: bg))
+        let maskedVideo = videoCI.applyingFilter("CISourceInCompositing",
+                                                 parameters: [kCIInputBackgroundImageKey: mask])
+        let composite = chrome.composited(over: maskedVideo.composited(over: bg))
         ciContext.render(composite, to: output)
     }
 
