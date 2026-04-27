@@ -13,7 +13,7 @@ struct ContentView: View {
                 VStack(spacing: 12) {
                     ProgressView().controlSize(.large)
                     Text(capture.status)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color(white: 0.2))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                 }

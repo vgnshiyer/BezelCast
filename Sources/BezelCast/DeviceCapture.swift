@@ -96,15 +96,21 @@ final class DeviceCapture: ObservableObject {
         status = "Disconnected. Plug in an iPhone."
     }
 
-    /// Polls the FrameTap to detect when the iPhone stops streaming (e.g. screen lock).
+    /// Polls the FrameTap to detect when the iPhone stops streaming (e.g. screen
+    /// lock). Two signals: frame arrival time (covers the case where iOS pauses
+    /// the capture entirely), and frame content change time (covers the case
+    /// where iOS keeps sending frozen frames after lock).
     private func startLivenessCheck() {
         livenessTask?.cancel()
         livenessTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
                 let now = ProcessInfo.processInfo.systemUptime
-                let last = self.frameTap.lastFrameTimestamp
-                let live = last > 0 && (now - last) < 0.7
+                let lastFrame = self.frameTap.lastFrameTimestamp
+                let lastChange = self.frameTap.lastContentChangeTimestamp
+                let frameOK = lastFrame > 0 && (now - lastFrame) < 0.7
+                let contentOK = lastChange > 0 && (now - lastChange) < 1.5
+                let live = frameOK && contentOK
                 if self.isLive != live {
                     self.isLive = live
                 }
