@@ -11,7 +11,9 @@ final class DeviceCapture: ObservableObject {
     @Published private(set) var status = "Plug in an iPhone via USB.\nTap Trust if prompted."
     @Published private(set) var isRecording = false
     @Published private(set) var profile: DeviceProfile = DeviceProfile.catalog.first!
+    @Published private(set) var deviceName: String?
     @Published private(set) var customFrame: NSImage?
+    @Published private(set) var customFrameName: String?
 
     private var customFrameCI: CIImage?
 
@@ -108,6 +110,7 @@ final class DeviceCapture: ObservableObject {
             session.startRunning()
         }
         self.session = session
+        self.deviceName = device.localizedName
         self.status = "Detecting device…"
     }
 
@@ -118,6 +121,7 @@ final class DeviceCapture: ObservableObject {
         stopVideoOutput()
         session?.stopRunning()
         session = nil
+        deviceName = nil
         clearCustomFrame()
         status = "Disconnected. Plug in an iPhone."
     }
@@ -152,6 +156,7 @@ final class DeviceCapture: ObservableObject {
     func clearCustomFrame() {
         customFrame = nil
         customFrameCI = nil
+        customFrameName = nil
         customFrameError = nil
     }
 
@@ -169,6 +174,7 @@ final class DeviceCapture: ObservableObject {
         }
         customFrame = nsImage
         customFrameCI = CIImage(cgImage: cgImage)
+        customFrameName = url.deletingPathExtension().lastPathComponent
         customFrameError = nil
     }
 
