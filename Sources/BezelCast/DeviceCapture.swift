@@ -66,9 +66,14 @@ final class DeviceCapture: ObservableObject {
             return
         }
         session.addInput(input)
+        if session.canAddOutput(videoOutput) {
+            session.addOutput(videoOutput)
+        }
         session.commitConfiguration()
-        // videoOutput is attached lazily — only while a screenshot or
-        // recording is in flight — so the preview path stays single-output.
+        // Data output stays attached but its connection starts disabled.
+        // Toggling isEnabled doesn't reconfigure the session, so the
+        // preview layer doesn't flash black like it would on add/remove.
+        videoOutput.connection(with: .video)?.isEnabled = false
 
         DispatchQueue.global(qos: .userInitiated).async {
             session.startRunning()
@@ -88,19 +93,11 @@ final class DeviceCapture: ObservableObject {
     }
 
     private func startVideoOutput() {
-        guard let session, !session.outputs.contains(videoOutput) else { return }
-        session.beginConfiguration()
-        if session.canAddOutput(videoOutput) {
-            session.addOutput(videoOutput)
-        }
-        session.commitConfiguration()
+        videoOutput.connection(with: .video)?.isEnabled = true
     }
 
     private func stopVideoOutput() {
-        guard let session, session.outputs.contains(videoOutput) else { return }
-        session.beginConfiguration()
-        session.removeOutput(videoOutput)
-        session.commitConfiguration()
+        videoOutput.connection(with: .video)?.isEnabled = false
         frameTap.clear()
     }
 
