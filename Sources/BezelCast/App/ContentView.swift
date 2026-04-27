@@ -108,9 +108,9 @@ private struct FloatingControlBar: View {
     private func iconButton(icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.white)
-                .frame(width: 26, height: 26)
+                .frame(width: 30, height: 30)
         }
         .buttonStyle(.plain)
         .disabled(capture.session == nil)
@@ -126,9 +126,9 @@ private struct FloatingControlBar: View {
             }
         } label: {
             Image(systemName: capture.isRecording ? "stop.fill" : "record.circle")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(capture.isRecording ? .red : .white)
-                .frame(width: 26, height: 26)
+                .frame(width: 30, height: 30)
         }
         .buttonStyle(.plain)
         .disabled(capture.session == nil)

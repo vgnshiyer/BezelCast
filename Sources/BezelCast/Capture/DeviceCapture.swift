@@ -100,7 +100,6 @@ final class DeviceCapture: ObservableObject {
                     self.profile = detected
                     self.clearCustomFrame()
                 }
-                self.status = "Connected · \(detected.displayName)"
                 self.videoOutput.connection(with: .video)?.isEnabled = false
             }
         }
@@ -111,7 +110,6 @@ final class DeviceCapture: ObservableObject {
         }
         self.session = session
         self.deviceName = device.localizedName
-        self.status = "Detecting device…"
     }
 
     private func detach() {
@@ -137,7 +135,8 @@ final class DeviceCapture: ObservableObject {
 
     // MARK: - Custom frame upload
 
-    /// True when the uploaded image fits the current profile's frameSize.
+    /// Error message from the most recent uploadFrame attempt, if it failed
+    /// (wrong dimensions, unreadable file). nil otherwise.
     @Published private(set) var customFrameError: String?
 
     func uploadFrame() {
