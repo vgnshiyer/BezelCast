@@ -7,7 +7,7 @@ struct ContentView: View {
         ZStack {
             Color(white: 0.93).ignoresSafeArea()
             if let session = capture.session {
-                BezelView(session: session)
+                BezelView(session: session, profile: capture.profile, customFrame: capture.customFrame)
                     .padding(24)
             } else {
                 VStack(spacing: 12) {
@@ -18,8 +18,37 @@ struct ContentView: View {
                         .padding(.horizontal, 32)
                 }
             }
+
+            if let error = capture.customFrameError {
+                VStack {
+                    Spacer()
+                    Text(error)
+                        .padding(8)
+                        .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 6))
+                        .foregroundStyle(.white)
+                        .padding(.bottom, 12)
+                }
+            }
         }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    capture.uploadFrame()
+                } label: {
+                    Label(capture.customFrame == nil ? "Upload Bezel" : "Replace Bezel",
+                          systemImage: "photo.badge.arrow.down")
+                }
+                .disabled(capture.session == nil)
+            }
+            if capture.customFrame != nil {
+                ToolbarItem {
+                    Button {
+                        capture.clearCustomFrame()
+                    } label: {
+                        Label("Clear Bezel", systemImage: "xmark.circle")
+                    }
+                }
+            }
             ToolbarItem {
                 Button {
                     capture.saveScreenshot()

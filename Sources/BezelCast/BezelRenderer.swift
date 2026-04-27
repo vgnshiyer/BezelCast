@@ -2,140 +2,110 @@
 import AppKit
 import CoreImage
 
-struct BezelGeometry {
-    static let frameRatio: CGFloat = 0.025
-    static let cornerRatio: CGFloat = 0.16
-    static let islandWidthRatio: CGFloat = 0.32
-    static let islandHeightRatio: CGFloat = 0.09
-    static let islandTopRatio: CGFloat = 0.03
-
-    let videoSize: CGSize
-
-    private var rawOuterWidth: CGFloat { videoSize.width / (1 - 2 * Self.frameRatio) }
-    private var rawOuterHeight: CGFloat { videoSize.height + 2 * frameThickness }
-
-    var outerWidth: CGFloat { (rawOuterWidth / 2).rounded() * 2 }
-    var outerHeight: CGFloat { (rawOuterHeight / 2).rounded() * 2 }
-    var outerSize: CGSize { CGSize(width: outerWidth, height: outerHeight) }
-    var frameThickness: CGFloat { outerWidth * Self.frameRatio }
-    var outerCorner: CGFloat { outerWidth * Self.cornerRatio }
-    var innerCorner: CGFloat { max(outerCorner - frameThickness, 0) }
-
-    var innerRect: CGRect {
-        CGRect(x: frameThickness, y: frameThickness,
-               width: videoSize.width, height: videoSize.height)
-    }
-
-    var islandRect: CGRect {
-        let w = videoSize.width * Self.islandWidthRatio
-        let h = videoSize.width * Self.islandHeightRatio
-        let topOffset = videoSize.width * Self.islandTopRatio
-        return CGRect(x: (outerWidth - w) / 2,
-                      y: outerHeight - frameThickness - topOffset - h,
-                      width: w, height: h)
-    }
-}
-
 struct BezelRenderer {
     let ciContext: CIContext
 
-    func screenshot(from buffer: CVPixelBuffer) -> NSImage? {
-        let ci = CIImage(cvPixelBuffer: buffer)
-        guard ci.extent.width > 0, ci.extent.height > 0,
-              let cgVideo = ciContext.createCGImage(ci, from: ci.extent) else { return nil }
-        let g = BezelGeometry(videoSize: ci.extent.size)
-
-        let image = NSImage(size: g.outerSize)
-        image.lockFocus()
-        defer { image.unlockFocus() }
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return nil }
-        drawFullBezel(in: ctx, geometry: g, video: cgVideo)
+    func screenshot(from buffer: CVPixelBuffer,
+                    profile: DeviceProfile,
+                    customFrame: CIImage?) -> NSImage? {
+        guard let composite = compositeImage(buffer: buffer, profile: profile, customFrame: customFrame),
+              let cg = ciContext.createCGImage(composite, from: composite.extent) else { return nil }
+        let image = NSImage(size: profile.frameSize)
+        image.addRepresentation(NSBitmapImageRep(cgImage: cg))
         return image
     }
 
-    /// Solid black rounded device shape, alpha 1 inside, alpha 0 outside.
-    /// Acts as the underlay for the recording so alpha is 1 across the
-    /// entire rounded device — no anti-aliasing gap at the screen edge.
-    func backplateImage(for videoSize: CGSize) -> CGImage? {
-        let g = BezelGeometry(videoSize: videoSize)
-        let width = Int(g.outerWidth)
-        let height = Int(g.outerHeight)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-
-        guard let ctx = CGContext(data: nil, width: width, height: height,
-                                  bitsPerComponent: 8, bytesPerRow: 0,
-                                  space: colorSpace, bitmapInfo: bitmapInfo) else { return nil }
-
-        ctx.clear(CGRect(x: 0, y: 0, width: width, height: height))
-
-        ctx.setFillColor(NSColor.black.cgColor)
-        ctx.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: g.outerSize),
-                           cornerWidth: g.outerCorner, cornerHeight: g.outerCorner, transform: nil))
-        ctx.fillPath()
-
-        return ctx.makeImage()
-    }
-
-    /// Alpha mask: opaque inside the rounded screen *minus* the Dynamic
-    /// Island (so the island shows the backplate through). Used to clip
-    /// the video so it can't leak past the rounded device edge.
-    func screenMaskImage(for videoSize: CGSize) -> CGImage? {
-        let g = BezelGeometry(videoSize: videoSize)
-        let width = Int(g.outerWidth)
-        let height = Int(g.outerHeight)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-
-        guard let ctx = CGContext(data: nil, width: width, height: height,
-                                  bitsPerComponent: 8, bytesPerRow: 0,
-                                  space: colorSpace, bitmapInfo: bitmapInfo) else { return nil }
-
-        ctx.clear(CGRect(x: 0, y: 0, width: width, height: height))
-
-        ctx.setFillColor(NSColor.white.cgColor)
-        ctx.addPath(CGPath(roundedRect: g.innerRect,
-                           cornerWidth: g.innerCorner, cornerHeight: g.innerCorner, transform: nil))
-        ctx.fillPath()
-
-        ctx.saveGState()
-        ctx.addPath(CGPath(roundedRect: g.islandRect,
-                           cornerWidth: g.islandRect.height / 2, cornerHeight: g.islandRect.height / 2, transform: nil))
-        ctx.clip()
-        ctx.clear(g.islandRect)
-        ctx.restoreGState()
-
-        return ctx.makeImage()
-    }
-
     func composite(video buffer: CVPixelBuffer,
-                   backplate: CIImage,
-                   mask: CIImage,
-                   geometry g: BezelGeometry,
+                   profile: DeviceProfile,
+                   customFrame: CIImage?,
                    into output: CVPixelBuffer) {
-        let videoCI = CIImage(cvPixelBuffer: buffer)
-            .transformed(by: CGAffineTransform(translationX: g.frameThickness, y: g.frameThickness))
-        let maskedVideo = videoCI.applyingFilter("CISourceInCompositing",
-                                                 parameters: [kCIInputBackgroundImageKey: mask])
-        let composite = maskedVideo.composited(over: backplate)
+        guard let composite = compositeImage(buffer: buffer, profile: profile, customFrame: customFrame) else { return }
         ciContext.render(composite, to: output)
     }
 
-    private func drawFullBezel(in ctx: CGContext, geometry g: BezelGeometry, video: CGImage) {
-        ctx.setFillColor(NSColor.black.cgColor)
-        ctx.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: g.outerSize),
-                           cornerWidth: g.outerCorner, cornerHeight: g.outerCorner, transform: nil))
-        ctx.fillPath()
+    /// Builds the composite CIImage at the profile's frame coordinates.
+    /// If customFrame is provided, uses it as the bezel art on top of the masked video.
+    /// Otherwise renders our programmatic black bezel via CGContext.
+    private func compositeImage(buffer: CVPixelBuffer,
+                                profile: DeviceProfile,
+                                customFrame: CIImage?) -> CIImage? {
+        let videoCI = CIImage(cvPixelBuffer: buffer)
+        let videoExtent = videoCI.extent
+        guard videoExtent.width > 0, videoExtent.height > 0 else { return nil }
 
-        ctx.saveGState()
-        ctx.addPath(CGPath(roundedRect: g.innerRect, cornerWidth: g.innerCorner, cornerHeight: g.innerCorner, transform: nil))
-        ctx.clip()
-        ctx.draw(video, in: g.innerRect)
-        ctx.restoreGState()
+        let scaleX = profile.screenSize.width / videoExtent.width
+        let scaleY = profile.screenSize.height / videoExtent.height
+        let scaled = videoCI.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
 
-        ctx.setFillColor(NSColor.black.cgColor)
-        ctx.addPath(CGPath(roundedRect: g.islandRect,
-                           cornerWidth: g.islandRect.height / 2, cornerHeight: g.islandRect.height / 2, transform: nil))
-        ctx.fillPath()
+        let tx = profile.screenOffset.x
+        let ty = profile.frameSize.height - profile.screenOffset.y - profile.screenSize.height
+        let positioned = scaled.transformed(by: CGAffineTransform(translationX: tx, y: ty))
+
+        let screenRect = CGRect(x: tx, y: ty,
+                                width: profile.screenSize.width,
+                                height: profile.screenSize.height)
+        let maskFilter = CIFilter(name: "CIRoundedRectangleGenerator")!
+        maskFilter.setValue(CIVector(cgRect: screenRect), forKey: kCIInputExtentKey)
+        maskFilter.setValue(profile.screenCornerRadius, forKey: "inputRadius")
+        maskFilter.setValue(CIColor.white, forKey: kCIInputColorKey)
+        guard let mask = maskFilter.outputImage else { return nil }
+
+        let maskedVideo = positioned.applyingFilter("CISourceInCompositing",
+                                                    parameters: [kCIInputBackgroundImageKey: mask])
+
+        if let customFrame {
+            return customFrame.composited(over: maskedVideo)
+        } else {
+            guard let programmatic = programmaticBezelImage(profile: profile) else { return nil }
+            return programmatic.composited(over: maskedVideo)
+        }
+    }
+
+    /// Renders a thin black ring around the screen + Dynamic Island into a CIImage
+    /// the same size as profile.frameSize. Transparent everywhere else.
+    private func programmaticBezelImage(profile: DeviceProfile) -> CIImage? {
+        let width = Int(profile.frameSize.width)
+        let height = Int(profile.frameSize.height)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+
+        guard let ctx = CGContext(data: nil, width: width, height: height,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: colorSpace, bitmapInfo: bitmapInfo) else { return nil }
+
+        ctx.clear(CGRect(x: 0, y: 0, width: width, height: height))
+
+        let thickness = DefaultBezelArt.thickness
+        let overlap = DefaultBezelArt.edgeOverlap
+        let innerY = profile.frameSize.height - profile.screenOffset.y - profile.screenSize.height
+        let screenRect = CGRect(x: profile.screenOffset.x, y: innerY,
+                                width: profile.screenSize.width, height: profile.screenSize.height)
+        let bezelOuter = screenRect.insetBy(dx: -thickness, dy: -thickness)
+        let bezelInner = screenRect.insetBy(dx: overlap, dy: overlap)
+        let outerCorner = profile.screenCornerRadius + thickness
+        let innerCorner = max(profile.screenCornerRadius - overlap, 0)
+
+        let combined = CGMutablePath()
+        combined.addPath(CGPath(roundedRect: bezelOuter,
+                                cornerWidth: outerCorner, cornerHeight: outerCorner, transform: nil))
+        combined.addPath(CGPath(roundedRect: bezelInner,
+                                cornerWidth: innerCorner, cornerHeight: innerCorner, transform: nil))
+
+        ctx.setFillColor(DefaultBezelArt.color.cgColor)
+        ctx.addPath(combined)
+        ctx.fillPath(using: .evenOdd)
+
+        if let island = profile.island {
+            let islandY = profile.frameSize.height - profile.screenOffset.y - island.origin.y - island.height
+            let islandRect = CGRect(x: profile.screenOffset.x + island.origin.x,
+                                    y: islandY,
+                                    width: island.width, height: island.height)
+            ctx.addPath(CGPath(roundedRect: islandRect,
+                               cornerWidth: island.height / 2, cornerHeight: island.height / 2, transform: nil))
+            ctx.fillPath()
+        }
+
+        guard let cg = ctx.makeImage() else { return nil }
+        return CIImage(cgImage: cg)
     }
 }

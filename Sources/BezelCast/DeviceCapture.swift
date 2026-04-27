@@ -3,12 +3,17 @@ import CoreMediaIO
 import CoreImage
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 
 @MainActor
 final class DeviceCapture: ObservableObject {
     @Published private(set) var session: AVCaptureSession?
     @Published private(set) var status = "Plug in an iPhone via USB.\nTap Trust if prompted."
     @Published private(set) var isRecording = false
+    @Published private(set) var profile: DeviceProfile = DeviceProfile.catalog.first!
+    @Published private(set) var customFrame: NSImage?
+
+    private var customFrameCI: CIImage?
 
     private var connectObserver: NSObjectProtocol?
     private var disconnectObserver: NSObjectProtocol?
@@ -70,16 +75,40 @@ final class DeviceCapture: ObservableObject {
             session.addOutput(videoOutput)
         }
         session.commitConfiguration()
-        // Data output stays attached but its connection starts disabled.
-        // Toggling isEnabled doesn't reconfigure the session, so the
-        // preview layer doesn't flash black like it would on add/remove.
-        videoOutput.connection(with: .video)?.isEnabled = false
+
+        // The iPhone presents as a muxed device, so CMVideoFormatDescriptionGetDimensions
+        // typically returns 0×0 from device.activeFormat. Try it as a hint, but fall back
+        // to first-frame detection (below) for the real dimensions.
+        let dims = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+        let hintedSize = CGSize(width: CGFloat(dims.width), height: CGFloat(dims.height))
+        if hintedSize.width > 0, hintedSize.height > 0 {
+            profile = DeviceProfile.detect(for: hintedSize) ?? DeviceProfile.generic(for: hintedSize)
+        }
+        // Don't overwrite profile with garbage — keep the catalog default until first frame.
+        clearCustomFrame()
+
+        // Enable the data output briefly so a frame can arrive for detection.
+        // The first-frame callback refines the profile and disables the connection
+        // again, so the steady-state preview path stays single-output.
+        frameTap.setOnFirstFrame { [weak self] size in
+            Task { @MainActor in
+                guard let self else { return }
+                let detected = DeviceProfile.detect(for: size) ?? DeviceProfile.generic(for: size)
+                if detected != self.profile {
+                    self.profile = detected
+                    self.clearCustomFrame()
+                }
+                self.status = "Connected · \(detected.displayName)"
+                self.videoOutput.connection(with: .video)?.isEnabled = false
+            }
+        }
+        videoOutput.connection(with: .video)?.isEnabled = true
 
         DispatchQueue.global(qos: .userInitiated).async {
             session.startRunning()
         }
         self.session = session
-        self.status = device.localizedName
+        self.status = "Detecting device…"
     }
 
     private func detach() {
@@ -89,6 +118,7 @@ final class DeviceCapture: ObservableObject {
         stopVideoOutput()
         session?.stopRunning()
         session = nil
+        clearCustomFrame()
         status = "Disconnected. Plug in an iPhone."
     }
 
@@ -99,6 +129,47 @@ final class DeviceCapture: ObservableObject {
     private func stopVideoOutput() {
         videoOutput.connection(with: .video)?.isEnabled = false
         frameTap.clear()
+    }
+
+    // MARK: - Custom frame upload
+
+    /// True when the uploaded image fits the current profile's frameSize.
+    @Published private(set) var customFrameError: String?
+
+    func uploadFrame() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.title = "Upload Bezel"
+        panel.message = "Pick a PNG sized \(Int(profile.frameSize.width))×\(Int(profile.frameSize.height)) for \(profile.displayName)."
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        loadCustomFrame(from: url)
+    }
+
+    func clearCustomFrame() {
+        customFrame = nil
+        customFrameCI = nil
+        customFrameError = nil
+    }
+
+    private func loadCustomFrame(from url: URL) {
+        guard let nsImage = NSImage(contentsOf: url),
+              let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            customFrameError = "Couldn't read \(url.lastPathComponent)."
+            return
+        }
+        let pxSize = CGSize(width: cgImage.width, height: cgImage.height)
+        let expected = profile.frameSize
+        guard abs(pxSize.width - expected.width) < 1, abs(pxSize.height - expected.height) < 1 else {
+            customFrameError = "Image is \(Int(pxSize.width))×\(Int(pxSize.height)). \(profile.displayName) needs \(Int(expected.width))×\(Int(expected.height))."
+            return
+        }
+        customFrame = nsImage
+        customFrameCI = CIImage(cgImage: cgImage)
+        customFrameError = nil
     }
 
     // MARK: - Screenshot
@@ -123,7 +194,7 @@ final class DeviceCapture: ObservableObject {
                 try? await Task.sleep(nanoseconds: 16_000_000)
             }
             guard let buffer = frameTap.latest,
-                  let image = renderer.screenshot(from: buffer) else { return }
+                  let image = renderer.screenshot(from: buffer, profile: profile, customFrame: customFrameCI) else { return }
             writePNG(image, to: url)
         }
     }
@@ -134,7 +205,7 @@ final class DeviceCapture: ObservableObject {
         guard recorder == nil, session != nil else { return }
         let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("BezelCast-\(UUID().uuidString).mov")
-        let recorder = BezelRecorder(url: tempURL, renderer: renderer)
+        let recorder = BezelRecorder(url: tempURL, renderer: renderer, profile: profile, customFrame: customFrameCI)
         self.recorder = recorder
         frameTap.setRecorder(recorder)
         startVideoOutput()
