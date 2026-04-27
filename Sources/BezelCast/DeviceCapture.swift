@@ -20,6 +20,7 @@ final class DeviceCapture: ObservableObject {
 
     init() {
         enableiOSScreenCaptureDevices()
+        videoOutput.setSampleBufferDelegate(frameTap, queue: videoQueue)
 
         let warmup = AVCaptureDevice.DiscoverySession(
             deviceTypes: [.external],
@@ -65,13 +66,9 @@ final class DeviceCapture: ObservableObject {
             return
         }
         session.addInput(input)
-
-        videoOutput.setSampleBufferDelegate(frameTap, queue: videoQueue)
-        if session.canAddOutput(videoOutput) {
-            session.addOutput(videoOutput)
-        }
-
         session.commitConfiguration()
+        // videoOutput is attached lazily — only while a screenshot or
+        // recording is in flight — so the preview path stays single-output.
 
         DispatchQueue.global(qos: .userInitiated).async {
             session.startRunning()
@@ -84,24 +81,54 @@ final class DeviceCapture: ObservableObject {
         if isRecording {
             discardRecording()
         }
+        stopVideoOutput()
         session?.stopRunning()
         session = nil
-        frameTap.clear()
         status = "Disconnected. Plug in an iPhone."
+    }
+
+    private func startVideoOutput() {
+        guard let session, !session.outputs.contains(videoOutput) else { return }
+        session.beginConfiguration()
+        if session.canAddOutput(videoOutput) {
+            session.addOutput(videoOutput)
+        }
+        session.commitConfiguration()
+    }
+
+    private func stopVideoOutput() {
+        guard let session, session.outputs.contains(videoOutput) else { return }
+        session.beginConfiguration()
+        session.removeOutput(videoOutput)
+        session.commitConfiguration()
+        frameTap.clear()
     }
 
     // MARK: - Screenshot
 
     func saveScreenshot() {
-        guard let buffer = frameTap.latest,
-              let image = renderer.screenshot(from: buffer) else { return }
+        guard session != nil else { return }
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = "BezelCast-\(timestamp()).png"
         panel.canCreateDirectories = true
+
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        writePNG(image, to: url)
+
+        frameTap.clear()
+        startVideoOutput()
+
+        Task { @MainActor in
+            defer { stopVideoOutput() }
+            let start = Date()
+            while frameTap.latest == nil && Date().timeIntervalSince(start) < 1.0 {
+                try? await Task.sleep(nanoseconds: 16_000_000)
+            }
+            guard let buffer = frameTap.latest,
+                  let image = renderer.screenshot(from: buffer) else { return }
+            writePNG(image, to: url)
+        }
     }
 
     // MARK: - Recording
@@ -113,6 +140,7 @@ final class DeviceCapture: ObservableObject {
         let recorder = BezelRecorder(url: tempURL, renderer: renderer)
         self.recorder = recorder
         frameTap.setRecorder(recorder)
+        startVideoOutput()
         isRecording = true
     }
 
@@ -121,6 +149,7 @@ final class DeviceCapture: ObservableObject {
         isRecording = false
         frameTap.setRecorder(nil)
         self.recorder = nil
+        stopVideoOutput()
 
         recorder.stop { [weak self] tempURL in
             DispatchQueue.main.async {
@@ -134,6 +163,7 @@ final class DeviceCapture: ObservableObject {
         isRecording = false
         frameTap.setRecorder(nil)
         self.recorder = nil
+        stopVideoOutput()
         recorder.stop { tempURL in
             if let tempURL { try? FileManager.default.removeItem(at: tempURL) }
         }
