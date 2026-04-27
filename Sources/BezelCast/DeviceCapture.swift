@@ -9,7 +9,6 @@ final class DeviceCapture: ObservableObject {
     @Published private(set) var session: AVCaptureSession?
     @Published private(set) var status = "Plug in an iPhone via USB.\nTap Trust if prompted."
     @Published private(set) var isRecording = false
-    @Published private(set) var isLive = false
 
     private var connectObserver: NSObjectProtocol?
     private var disconnectObserver: NSObjectProtocol?
@@ -18,7 +17,6 @@ final class DeviceCapture: ObservableObject {
     private let videoQueue = DispatchQueue(label: "BezelCast.video", qos: .userInitiated)
     private let renderer = BezelRenderer(ciContext: CIContext())
     private var recorder: BezelRecorder?
-    private var livenessTask: Task<Void, Never>?
 
     init() {
         enableiOSScreenCaptureDevices()
@@ -80,43 +78,16 @@ final class DeviceCapture: ObservableObject {
         }
         self.session = session
         self.status = device.localizedName
-        startLivenessCheck()
     }
 
     private func detach() {
         if isRecording {
             discardRecording()
         }
-        livenessTask?.cancel()
-        livenessTask = nil
-        isLive = false
         session?.stopRunning()
         session = nil
         frameTap.clear()
         status = "Disconnected. Plug in an iPhone."
-    }
-
-    /// Polls the FrameTap to detect when the iPhone stops streaming (e.g. screen
-    /// lock). Two signals: frame arrival time (covers the case where iOS pauses
-    /// the capture entirely), and frame content change time (covers the case
-    /// where iOS keeps sending frozen frames after lock).
-    private func startLivenessCheck() {
-        livenessTask?.cancel()
-        livenessTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                let now = ProcessInfo.processInfo.systemUptime
-                let lastFrame = self.frameTap.lastFrameTimestamp
-                let lastChange = self.frameTap.lastContentChangeTimestamp
-                let frameOK = lastFrame > 0 && (now - lastFrame) < 0.7
-                let contentOK = lastChange > 0 && (now - lastChange) < 1.5
-                let live = frameOK && contentOK
-                if self.isLive != live {
-                    self.isLive = live
-                }
-                try? await Task.sleep(nanoseconds: 200_000_000)
-            }
-        }
     }
 
     // MARK: - Screenshot

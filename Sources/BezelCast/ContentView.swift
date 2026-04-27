@@ -7,7 +7,7 @@ struct ContentView: View {
         ZStack {
             Color(white: 0.93).ignoresSafeArea()
             if let session = capture.session {
-                BezelView(session: session, isLive: capture.isLive)
+                BezelView(session: session)
                     .padding(24)
             } else {
                 VStack(spacing: 12) {

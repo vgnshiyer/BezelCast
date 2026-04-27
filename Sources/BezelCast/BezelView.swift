@@ -3,7 +3,6 @@ import AVFoundation
 
 struct BezelView: View {
     let session: AVCaptureSession
-    let isLive: Bool
 
     private let innerAspect: CGFloat = 9.0 / 19.5
 
@@ -30,15 +29,6 @@ struct BezelView: View {
                 CapturePreview(session: session)
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius - frame))
                     .padding(frame)
-
-                // Black overlay covers the preview when the iPhone stops streaming
-                // (lock, sleep). Plain SwiftUI shape — its opacity is reliable,
-                // unlike applying opacity to the AVCaptureVideoPreviewLayer.
-                RoundedRectangle(cornerRadius: cornerRadius - frame)
-                    .fill(.black)
-                    .padding(frame)
-                    .opacity(isLive ? 0 : 1)
-                    .animation(.easeInOut(duration: 0.2), value: isLive)
 
                 Capsule()
                     .fill(.black)
