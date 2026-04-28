@@ -105,7 +105,35 @@ struct BezelRenderer {
             ctx.fillPath()
         }
 
+        if let notch = profile.notch {
+            let notchTop = profile.frameSize.height - profile.screenOffset.y
+            let notchRect = CGRect(
+                x: profile.screenOffset.x + (profile.screenSize.width - notch.width) / 2,
+                y: notchTop - notch.height,
+                width: notch.width,
+                height: notch.height)
+            ctx.addPath(notchPath(rect: notchRect))
+            ctx.fillPath()
+        }
+
         guard let cg = ctx.makeImage() else { return nil }
         return CIImage(cgImage: cg)
+    }
+
+    /// Notch path for the bitmap context (CG y-up). Flat top edge attached
+    /// to rect.maxY, two rounded corners on the bottom of radius half-height.
+    private func notchPath(rect: CGRect) -> CGPath {
+        let r = rect.height / 2
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.minY),
+                    tangent2End: CGPoint(x: rect.minX, y: rect.minY),
+                    radius: r)
+        path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.minY),
+                    tangent2End: CGPoint(x: rect.minX, y: rect.maxY),
+                    radius: r)
+        path.closeSubpath()
+        return path
     }
 }

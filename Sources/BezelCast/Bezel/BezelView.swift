@@ -8,10 +8,13 @@ struct BezelView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let aspect = profile.frameSize.width / profile.frameSize.height
-            let availableW = min(geo.size.width, geo.size.height * aspect)
-            let availableH = availableW / aspect
-            let scale = availableW / profile.frameSize.width
+            // Scale relative to the catalog's largest frame so smaller devices
+            // render visibly smaller in the same window.
+            let reference = DeviceProfile.largestFrameSize
+            let scale = min(geo.size.width / reference.width,
+                            geo.size.height / reference.height)
+            let availableW = profile.frameSize.width * scale
+            let availableH = profile.frameSize.height * scale
 
             let screenW = profile.screenSize.width * scale
             let screenH = profile.screenSize.height * scale
@@ -36,7 +39,7 @@ struct BezelView: View {
             }
             .frame(width: availableW, height: availableH)
             .shadow(color: .black.opacity(0.25), radius: 24, y: 8)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
     }
 }
@@ -70,6 +73,22 @@ private struct ProgrammaticBezel: View {
                     .frame(width: island.width * scale, height: island.height * scale)
                     .offset(x: screenRect.minX + island.origin.x * scale,
                             y: screenRect.minY + island.origin.y * scale)
+            }
+
+            if let notch = profile.notch {
+                let notchW = notch.width * scale
+                let notchH = notch.height * scale
+                let notchX = screenRect.minX + (profile.screenSize.width - notch.width) / 2 * scale
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 0,
+                    bottomLeadingRadius: notchH / 2,
+                    bottomTrailingRadius: notchH / 2,
+                    topTrailingRadius: 0,
+                    style: .continuous
+                )
+                .fill(.black)
+                .frame(width: notchW, height: notchH)
+                .offset(x: notchX, y: screenRect.minY)
             }
         }
     }

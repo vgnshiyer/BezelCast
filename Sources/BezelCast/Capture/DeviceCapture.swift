@@ -12,6 +12,7 @@ final class DeviceCapture: ObservableObject {
     @Published private(set) var isRecording = false
     @Published private(set) var recordingStartTime: Date?
     @Published private(set) var profile: DeviceProfile = DeviceProfile.catalog.first!
+    @Published private(set) var autoDetectedProfile: DeviceProfile?
     @Published private(set) var deviceName: String?
     @Published private(set) var customFrame: NSImage?
     @Published private(set) var customFrameName: String?
@@ -97,6 +98,7 @@ final class DeviceCapture: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 let detected = DeviceProfile.detect(for: size) ?? DeviceProfile.generic(for: size)
+                self.autoDetectedProfile = detected
                 if detected != self.profile {
                     self.profile = detected
                     self.clearCustomFrame()
@@ -121,8 +123,18 @@ final class DeviceCapture: ObservableObject {
         session?.stopRunning()
         session = nil
         deviceName = nil
+        autoDetectedProfile = nil
         clearCustomFrame()
         status = "Disconnected. Plug in an iPhone."
+    }
+
+    /// User-driven profile override from the picker. Custom-uploaded bezels
+    /// are cleared because they were validated against the previous profile's
+    /// frameSize and won't match the new one.
+    func selectProfile(_ newProfile: DeviceProfile) {
+        guard newProfile != profile else { return }
+        clearCustomFrame()
+        profile = newProfile
     }
 
     private func startVideoOutput() {
