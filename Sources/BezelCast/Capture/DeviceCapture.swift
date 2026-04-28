@@ -59,7 +59,7 @@ final class DeviceCapture: ObservableObject {
     private var recorder: BezelRecorder?
     private lazy var previewCompositor = PreviewCompositor(renderer: renderer,
                                                            frameStore: previewFrames)
-    var willApplyPreviewConfiguration: ((PreviewConfiguration) -> Void)?
+    var didApplyPreviewConfiguration: ((PreviewConfiguration) -> Void)?
 
     init() {
         enableiOSScreenCaptureDevices()
@@ -186,7 +186,6 @@ final class DeviceCapture: ObservableObject {
     private func applyPreview(profile: DeviceProfile, customFrame: CustomFrame?) {
         let shouldClearPreview = (self.customFrame == nil) != (customFrame == nil)
         let configuration = PreviewConfiguration(profile: profile, customFrame: customFrame)
-        willApplyPreviewConfiguration?(configuration)
         previewCompositor.setConfiguration(configuration)
         let compositor = previewCompositor
         frameTap.setPreviewSink { buffer, pts, completion in
@@ -198,6 +197,7 @@ final class DeviceCapture: ObservableObject {
             previewFrames.display(nil)
         }
         previewConfiguration = configuration
+        didApplyPreviewConfiguration?(configuration)
     }
 
     private func handleFrameSize(_ size: CGSize) {

@@ -4,34 +4,25 @@ struct ContentView: View {
     @ObservedObject var capture: DeviceCapture
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear
-
-            if capture.session != nil {
-                let configuration = capture.previewConfiguration
-                BezelView(profile: configuration.profile,
-                          customFrame: configuration.customFrame,
-                          previewFrames: capture.previewFrames)
-                    .padding(.top, PreviewLayout.deviceTop)
-                    .padding(.horizontal, PreviewLayout.sidePadding)
-                    .padding(.bottom, PreviewLayout.sidePadding)
-            } else {
-                VStack(spacing: 14) {
-                    Image(systemName: "iphone")
-                        .font(.system(size: 80, weight: .ultraLight))
-                        .foregroundStyle(.white.opacity(0.35))
-                    Text(capture.status)
-                        .foregroundStyle(.white.opacity(0.85))
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, 32)
-                .padding(.vertical, 24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            }
-
+        VStack(spacing: 0) {
             FloatingControlBar(capture: capture)
                 .padding(.top, PreviewLayout.toolbarTop)
+                .frame(height: PreviewLayout.toolbarHeight + PreviewLayout.toolbarTop,
+                       alignment: .top)
+                .zIndex(1)
 
+            content
+                .padding(.top, PreviewLayout.toolbarGap)
+                .padding(.horizontal, PreviewLayout.sidePadding)
+                .padding(.bottom, PreviewLayout.sidePadding)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color.clear)
+        .transaction { transaction in
+            transaction.animation = nil
+        }
+        .overlay(alignment: .bottom) {
             if let error = capture.customFrameError {
                 Text(error)
                     .font(.system(size: 12))
@@ -40,8 +31,29 @@ struct ContentView: View {
                     .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
                     .foregroundStyle(.white)
                     .padding(.bottom, 16)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if capture.session != nil {
+            let configuration = capture.previewConfiguration
+            BezelView(profile: configuration.profile,
+                      customFrame: configuration.customFrame,
+                      previewFrames: capture.previewFrames)
+        } else {
+            VStack(spacing: 14) {
+                Image(systemName: "iphone")
+                    .font(.system(size: 80, weight: .ultraLight))
+                    .foregroundStyle(.white.opacity(0.35))
+                Text(capture.status)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
     }
 }
@@ -51,10 +63,6 @@ private enum PreviewLayout {
     static let toolbarHeight: CGFloat = 52
     static let toolbarGap: CGFloat = 16
     static let sidePadding: CGFloat = 16
-
-    static var deviceTop: CGFloat {
-        toolbarTop + toolbarHeight + toolbarGap
-    }
 }
 
 private struct FloatingControlBar: View {

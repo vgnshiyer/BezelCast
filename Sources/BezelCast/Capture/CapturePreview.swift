@@ -37,6 +37,10 @@ final class LayeredPreviewView: NSView {
 
         wantsLayer = true
         let rootLayer = CALayer()
+        let disabledActions = ["bounds": NSNull(),
+                               "position": NSNull(),
+                               "contents": NSNull()]
+        rootLayer.actions = disabledActions
         rootLayer.backgroundColor = NSColor.clear.cgColor
         rootLayer.masksToBounds = false
         rootLayer.shadowColor = NSColor.black.cgColor
@@ -49,6 +53,7 @@ final class LayeredPreviewView: NSView {
         compositedLayer.masksToBounds = false
         compositedLayer.isOpaque = false
         compositedLayer.isHidden = true
+        compositedLayer.actions = disabledActions
 
         rootLayer.addSublayer(compositedLayer)
     }
