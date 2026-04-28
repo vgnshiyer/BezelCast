@@ -60,7 +60,7 @@ private struct FloatingControlBar: View {
                 Text(titleLine)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
-                Text(subtitleLine)
+                subtitle
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.55))
             }
@@ -84,11 +84,32 @@ private struct FloatingControlBar: View {
         return capture.deviceName ?? capture.profile.displayName
     }
 
-    private var subtitleLine: String {
+    /// Subtitle view — live-ticking timer when recording, otherwise a static label.
+    @ViewBuilder
+    private var subtitle: some View {
+        if let start = capture.recordingStartTime, capture.isRecording {
+            TimelineView(.periodic(from: start, by: 0.5)) { context in
+                Text("Recording — \(formatDuration(context.date.timeIntervalSince(start)))")
+            }
+        } else {
+            Text(staticSubtitle)
+        }
+    }
+
+    private var staticSubtitle: String {
         guard capture.session != nil else { return "Plug in an iPhone via USB" }
-        if capture.isRecording { return "Recording" }
         if let name = capture.customFrameName { return name }
         return capture.profile.displayName
+    }
+
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds))
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        return h > 0
+            ? String(format: "%d:%02d:%02d", h, m, s)
+            : String(format: "%d:%02d", m, s)
     }
 
     /// Bezel upload + clear, grouped inside their own subtle pill — they're

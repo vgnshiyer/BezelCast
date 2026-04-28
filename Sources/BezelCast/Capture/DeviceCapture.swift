@@ -10,6 +10,7 @@ final class DeviceCapture: ObservableObject {
     @Published private(set) var session: AVCaptureSession?
     @Published private(set) var status = "Plug in an iPhone via USB.\nTap Trust if prompted."
     @Published private(set) var isRecording = false
+    @Published private(set) var recordingStartTime: Date?
     @Published private(set) var profile: DeviceProfile = DeviceProfile.catalog.first!
     @Published private(set) var deviceName: String?
     @Published private(set) var customFrame: NSImage?
@@ -214,12 +215,14 @@ final class DeviceCapture: ObservableObject {
         self.recorder = recorder
         frameTap.setRecorder(recorder)
         startVideoOutput()
+        recordingStartTime = Date()
         isRecording = true
     }
 
     func stopRecording() {
         guard let recorder else { return }
         isRecording = false
+        recordingStartTime = nil
         frameTap.setRecorder(nil)
         self.recorder = nil
         stopVideoOutput()
@@ -234,6 +237,7 @@ final class DeviceCapture: ObservableObject {
     private func discardRecording() {
         guard let recorder else { return }
         isRecording = false
+        recordingStartTime = nil
         frameTap.setRecorder(nil)
         self.recorder = nil
         stopVideoOutput()
