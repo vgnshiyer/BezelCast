@@ -4,33 +4,39 @@ struct ContentView: View {
     @ObservedObject var capture: DeviceCapture
 
     var body: some View {
-        VStack(spacing: 0) {
-            FloatingControlBar(capture: capture)
-                .padding(.top, PreviewLayout.toolbarTop)
-                .frame(height: PreviewLayout.toolbarHeight + PreviewLayout.toolbarTop,
-                       alignment: .top)
-                .zIndex(1)
+        GeometryReader { geo in
+            let toolbarWidth = toolbarWidth(in: geo.size)
 
-            content
-                .padding(.top, PreviewLayout.toolbarGap)
-                .padding(.horizontal, PreviewLayout.sidePadding)
-                .padding(.bottom, PreviewLayout.sidePadding)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color.clear)
-        .transaction { transaction in
-            transaction.animation = nil
-        }
-        .overlay(alignment: .bottom) {
-            if let error = capture.customFrameError {
-                Text(error)
-                    .font(.system(size: 12))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
-                    .foregroundStyle(.white)
-                    .padding(.bottom, 16)
+            VStack(spacing: 0) {
+                FloatingControlBar(capture: capture)
+                    .frame(width: toolbarWidth)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, PreviewLayout.toolbarTop)
+                    .frame(height: PreviewLayout.toolbarHeight + PreviewLayout.toolbarTop,
+                           alignment: .top)
+                    .zIndex(1)
+
+                content
+                    .padding(.top, PreviewLayout.toolbarGap)
+                    .padding(.horizontal, PreviewLayout.sidePadding)
+                    .padding(.bottom, PreviewLayout.sidePadding)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(Color.clear)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+            .overlay(alignment: .bottom) {
+                if let error = capture.customFrameError {
+                    Text(error)
+                        .font(.system(size: 12))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+                        .foregroundStyle(.white)
+                        .padding(.bottom, 16)
+                }
             }
         }
     }
@@ -56,6 +62,26 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
     }
+
+    private func toolbarWidth(in containerSize: CGSize) -> CGFloat {
+        let availableWidth = max(0, containerSize.width - PreviewLayout.sidePadding * 2)
+        guard capture.session != nil else { return availableWidth }
+
+        let configuration = capture.previewConfiguration
+        let previewSize = DeviceDisplayLayout.previewSize(for: configuration.profile,
+                                                          customFrame: configuration.customFrame)
+        let availableHeight = max(0,
+                                  containerSize.height
+                                      - PreviewLayout.toolbarTop
+                                      - PreviewLayout.toolbarHeight
+                                      - PreviewLayout.toolbarGap
+                                      - PreviewLayout.sidePadding)
+        let fit = min(1,
+                      availableWidth / previewSize.width,
+                      availableHeight / previewSize.height)
+        let displayWidth = previewSize.width * fit
+        return min(availableWidth, max(PreviewLayout.minimumToolbarWidth, displayWidth))
+    }
 }
 
 private enum PreviewLayout {
@@ -63,6 +89,7 @@ private enum PreviewLayout {
     static let toolbarHeight: CGFloat = 52
     static let toolbarGap: CGFloat = 16
     static let sidePadding: CGFloat = 16
+    static let minimumToolbarWidth: CGFloat = 360
 }
 
 private struct FloatingControlBar: View {
