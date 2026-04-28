@@ -18,11 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let capture = DeviceCapture()
     let windowAccess = WindowAccess()
     private var window: NSWindow?
+    private var lastWindowLayoutKey: WindowLayoutKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let content = ContentView(capture: capture)
             .environmentObject(windowAccess)
-            .frame(minWidth: 360, minHeight: 720)
+            .frame(minWidth: 360, minHeight: 360)
 
         let window = KeyableBorderlessWindow(
             contentRect: NSRect(x: 0, y: 0, width: 420, height: 820),
@@ -41,10 +42,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowAccess.window = window
         window.makeKeyAndOrderFront(nil)
         self.window = window
+        capture.willApplyPreviewConfiguration = { [weak self] configuration in
+            self?.resizeWindowIfLayoutChanged(for: configuration, animated: false)
+        }
+        resizeWindowIfLayoutChanged(for: capture.previewConfiguration, animated: false)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    private func resizeWindowIfLayoutChanged(for configuration: PreviewConfiguration,
+                                             animated: Bool) {
+        let nextKey = WindowLayoutKey(configuration: configuration)
+        guard nextKey != lastWindowLayoutKey else { return }
+        lastWindowLayoutKey = nextKey
+        resizeWindow(for: configuration, animated: animated)
+    }
+
+    private func resizeWindow(for configuration: PreviewConfiguration, animated: Bool) {
+        guard let window else { return }
+        let targetSize = DeviceDisplayLayout.windowSize(for: configuration.profile,
+                                                        customFrame: configuration.customFrame)
+        let currentSize = window.frame.size
+        guard abs(currentSize.width - targetSize.width) > 8
+            || abs(currentSize.height - targetSize.height) > 8 else { return }
+
+        let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame ?? window.frame
+        let currentFrame = window.frame
+        var nextFrame = CGRect(x: currentFrame.minX,
+                               y: currentFrame.maxY - targetSize.height,
+                               width: targetSize.width,
+                               height: targetSize.height)
+        nextFrame = constrained(nextFrame, to: visibleFrame)
+        window.setFrame(nextFrame, display: true, animate: animated)
+    }
+
+    private func constrained(_ frame: CGRect, to visibleFrame: CGRect) -> CGRect {
+        var next = frame
+        next.size.width = min(next.width, visibleFrame.width)
+        next.size.height = min(next.height, visibleFrame.height)
+        next.origin.x = min(max(next.minX, visibleFrame.minX), visibleFrame.maxX - next.width)
+        next.origin.y = min(max(next.minY, visibleFrame.minY), visibleFrame.maxY - next.height)
+        return next
     }
 }
 
@@ -53,4 +93,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 final class KeyableBorderlessWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+}
+
+private struct WindowLayoutKey: Equatable {
+    let windowSize: CGSize
+
+    init(configuration: PreviewConfiguration) {
+        windowSize = DeviceDisplayLayout.windowSize(for: configuration.profile,
+                                                    customFrame: configuration.customFrame)
+    }
 }

@@ -4,17 +4,17 @@ struct ContentView: View {
     @ObservedObject var capture: DeviceCapture
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             Color.clear
 
-            if let session = capture.session {
-                BezelView(session: session, profile: capture.profile, customFrame: capture.customFrame)
-                    // Toolbar pill sits at y=12 with ~52px height = 64px from
-                    // the top. Add a consistent 16px breathing gap on all four
-                    // sides — top stacks on top of the toolbar offset.
-                    .padding(.top, 80)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
+            if capture.session != nil {
+                let configuration = capture.previewConfiguration
+                BezelView(profile: configuration.profile,
+                          customFrame: configuration.customFrame,
+                          previewFrames: capture.previewFrames)
+                    .padding(.top, PreviewLayout.deviceTop)
+                    .padding(.horizontal, PreviewLayout.sidePadding)
+                    .padding(.bottom, PreviewLayout.sidePadding)
             } else {
                 VStack(spacing: 14) {
                     Image(systemName: "iphone")
@@ -26,27 +26,34 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 32)
                 .padding(.vertical, 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
 
-            VStack {
-                FloatingControlBar(capture: capture)
-                    .padding(.top, 12)
-                Spacer()
-            }
+            FloatingControlBar(capture: capture)
+                .padding(.top, PreviewLayout.toolbarTop)
 
             if let error = capture.customFrameError {
-                VStack {
-                    Spacer()
-                    Text(error)
-                        .font(.system(size: 12))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
-                        .foregroundStyle(.white)
-                        .padding(.bottom, 16)
-                }
+                Text(error)
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+                    .foregroundStyle(.white)
+                    .padding(.bottom, 16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
         }
+    }
+}
+
+private enum PreviewLayout {
+    static let toolbarTop: CGFloat = 12
+    static let toolbarHeight: CGFloat = 52
+    static let toolbarGap: CGFloat = 16
+    static let sidePadding: CGFloat = 16
+
+    static var deviceTop: CGFloat {
+        toolbarTop + toolbarHeight + toolbarGap
     }
 }
 
@@ -81,6 +88,7 @@ private struct FloatingControlBar: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Capsule().fill(Color.black.opacity(0.78)))
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
     }
@@ -115,7 +123,7 @@ private struct FloatingControlBar: View {
     }
 
     private var staticSubtitle: String {
-        guard capture.session != nil else { return "Plug in an iPhone via USB" }
+        guard capture.session != nil else { return "Plug in a device" }
         if let name = capture.customFrameName { return name }
         return capture.profile.displayName
     }
@@ -132,15 +140,15 @@ private struct FloatingControlBar: View {
 
     /// Picker for the bezel profile. SwiftUI's Menu with .borderlessButton
     /// menuStyle silently drops every label child after the first, so we
-    /// roll our own with Button + popover — that way the iPhone glyph and
-    /// chevron both render reliably. Aspect-incompatible profiles are
-    /// filtered out so a 16:9 SE feed never lands in a 19.5:9 Pro bezel.
+    /// roll our own with Button + popover — that way the device glyph and
+    /// chevron both render reliably. Aspect-incompatible profiles are hidden
+    /// so the feed never lands in a badly stretched profile.
     private var profilePicker: some View {
         Button {
             showingProfilePicker.toggle()
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "iphone")
+                Image(systemName: capture.profile.family == .iPad ? "ipad" : "iphone")
                     .font(.system(size: 18, weight: .regular))
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .regular))
@@ -184,8 +192,8 @@ private struct FloatingControlBar: View {
     }
 
     private var compatibleProfiles: [DeviceProfile] {
-        guard let auto = capture.autoDetectedProfile else { return DeviceProfile.catalog }
-        return DeviceProfile.compatible(with: auto)
+        let reference = capture.autoDetectedProfile ?? capture.profile
+        return DeviceProfile.compatible(with: reference)
     }
 
     private var bezelButton: some View {

@@ -7,53 +7,80 @@ struct BezelRenderer {
 
     func screenshot(from buffer: CVPixelBuffer,
                     profile: DeviceProfile,
-                    customFrame: CIImage?) -> NSImage? {
+                    customFrame: RenderFrame?) -> NSImage? {
         guard let composite = compositeImage(buffer: buffer, profile: profile, customFrame: customFrame),
               let cg = ciContext.createCGImage(composite, from: composite.extent) else { return nil }
-        let outputSize = customFrame != nil ? profile.frameSize : profile.screenSize
+        let outputSize = customFrame?.geometry.frameSize ?? profile.screenSize
         let image = NSImage(size: outputSize)
         image.addRepresentation(NSBitmapImageRep(cgImage: cg))
         return image
     }
 
+    func previewImage(from buffer: CVPixelBuffer,
+                      profile: DeviceProfile,
+                      customFrame: RenderFrame?,
+                      maxLongSide: CGFloat = 1800) -> CGImage? {
+        guard let composite = compositeImage(buffer: buffer,
+                                             profile: profile,
+                                             customFrame: customFrame) else { return nil }
+        let extent = composite.extent
+        guard extent.width > 0, extent.height > 0 else { return nil }
+
+        let scale = min(1, maxLongSide / max(extent.width, extent.height))
+        let output = scale < 1
+            ? composite.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            : composite
+        return ciContext.createCGImage(output, from: output.extent)
+    }
+
     func composite(video buffer: CVPixelBuffer,
                    profile: DeviceProfile,
-                   customFrame: CIImage?,
+                   customFrame: RenderFrame?,
                    into output: CVPixelBuffer) {
         guard let composite = compositeImage(buffer: buffer, profile: profile, customFrame: customFrame) else { return }
-        ciContext.render(composite, to: output)
+        let outputRect = CGRect(x: 0,
+                                y: 0,
+                                width: CVPixelBufferGetWidth(output),
+                                height: CVPixelBufferGetHeight(output))
+        ciContext.render(composite.fitted(in: outputRect), to: output)
     }
 
     /// Without a custom bezel, the result is the rounded-clipped screen at
-    /// `screenSize`. With a custom bezel, the screen is positioned at
-    /// `screenOffset` inside a `frameSize` canvas with the bezel composited
-    /// on top.
+    /// `screenSize`. With a custom bezel, the screen is positioned inside the
+    /// detected transparent cutout with the bezel composited on top.
     private func compositeImage(buffer: CVPixelBuffer,
                                 profile: DeviceProfile,
-                                customFrame: CIImage?) -> CIImage? {
+                                customFrame: RenderFrame?) -> CIImage? {
         let videoCI = CIImage(cvPixelBuffer: buffer)
         let videoExtent = videoCI.extent
         guard videoExtent.width > 0, videoExtent.height > 0 else { return nil }
 
-        let scaleX = profile.screenSize.width / videoExtent.width
-        let scaleY = profile.screenSize.height / videoExtent.height
-        let scaled = videoCI.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-
         if let customFrame {
+            let geometry = customFrame.geometry
+            let screenRectTopLeft = geometry.screenRect
+            let scaleX = screenRectTopLeft.width / videoExtent.width
+            let scaleY = screenRectTopLeft.height / videoExtent.height
+            let scaled = videoCI.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+
             // CG y-up: flip screenOffset.y so the screen sits at the top of
             // the frame canvas.
-            let tx = profile.screenOffset.x
-            let ty = profile.frameSize.height - profile.screenOffset.y - profile.screenSize.height
+            let tx = screenRectTopLeft.minX
+            let ty = geometry.frameSize.height - screenRectTopLeft.minY - screenRectTopLeft.height
             let positioned = scaled.transformed(by: CGAffineTransform(translationX: tx, y: ty))
 
             let screenRect = CGRect(x: tx, y: ty,
-                                    width: profile.screenSize.width,
-                                    height: profile.screenSize.height)
-            guard let mask = roundedMask(rect: screenRect, radius: profile.screenCornerRadius) else { return nil }
+                                    width: screenRectTopLeft.width,
+                                    height: screenRectTopLeft.height)
+            guard let mask = roundedMask(rect: screenRect,
+                                         radius: profile.scaledCornerRadius(for: screenRect.size)) else { return nil }
             let maskedVideo = positioned.applyingFilter("CISourceInCompositing",
                                                         parameters: [kCIInputBackgroundImageKey: mask])
-            return customFrame.composited(over: maskedVideo)
+            return customFrame.image.composited(over: maskedVideo)
         } else {
+            let scaleX = profile.screenSize.width / videoExtent.width
+            let scaleY = profile.screenSize.height / videoExtent.height
+            let scaled = videoCI.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+
             let screenRect = CGRect(x: 0, y: 0,
                                     width: profile.screenSize.width,
                                     height: profile.screenSize.height)
@@ -69,5 +96,20 @@ struct BezelRenderer {
         filter.setValue(radius, forKey: "inputRadius")
         filter.setValue(CIColor.white, forKey: kCIInputColorKey)
         return filter.outputImage
+    }
+}
+
+private extension CIImage {
+    func fitted(in target: CGRect) -> CIImage {
+        guard extent.width > 0, extent.height > 0 else { return self }
+
+        let scale = min(target.width / extent.width, target.height / extent.height)
+        let scaledSize = CGSize(width: extent.width * scale, height: extent.height * scale)
+        let tx = target.midX - scaledSize.width / 2 - extent.minX * scale
+        let ty = target.midY - scaledSize.height / 2 - extent.minY * scale
+        let fitted = transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            .transformed(by: CGAffineTransform(translationX: tx, y: ty))
+        let clear = CIImage(color: .clear).cropped(to: target)
+        return fitted.composited(over: clear).cropped(to: target)
     }
 }

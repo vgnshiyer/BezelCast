@@ -6,7 +6,7 @@ final class BezelRecorder: @unchecked Sendable {
     private let outputURL: URL
     private let renderer: BezelRenderer
     private let profile: DeviceProfile
-    private let customFrame: CIImage?
+    private let customFrame: CustomFrame?
 
     private let lock = NSLock()
     private var writer: AVAssetWriter?
@@ -15,7 +15,7 @@ final class BezelRecorder: @unchecked Sendable {
     private var started = false
     private var stopped = false
 
-    init(url: URL, renderer: BezelRenderer, profile: DeviceProfile, customFrame: CIImage?) {
+    init(url: URL, renderer: BezelRenderer, profile: DeviceProfile, customFrame: CustomFrame?) {
         self.outputURL = url
         self.renderer = renderer
         self.profile = profile
@@ -38,7 +38,11 @@ final class BezelRecorder: @unchecked Sendable {
         let result = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &outputBuffer)
         guard result == kCVReturnSuccess, let output = outputBuffer else { return }
 
-        renderer.composite(video: buffer, profile: profile, customFrame: customFrame, into: output)
+        let currentSize = CGSize(width: CVPixelBufferGetWidth(buffer),
+                                 height: CVPixelBufferGetHeight(buffer))
+        let currentProfile = profile.oriented(matching: currentSize)
+        let currentFrame = customFrame?.oriented(to: currentProfile)?.renderFrame
+        renderer.composite(video: buffer, profile: currentProfile, customFrame: currentFrame, into: output)
         if !adaptor.append(output, withPresentationTime: presentationTime) {
             print("append failed: \(String(describing: writer?.error))")
         }
@@ -66,9 +70,7 @@ final class BezelRecorder: @unchecked Sendable {
     }
 
     private func startWriting(time: CMTime) {
-        // With a custom bezel, output is the full bezel canvas; without,
-        // just the screen.
-        let outputSize = customFrame != nil ? profile.frameSize : profile.screenSize
+        let outputSize = customFrame?.geometry.frameSize ?? profile.screenSize
         let outputWidth = Int(outputSize.width)
         let outputHeight = Int(outputSize.height)
 

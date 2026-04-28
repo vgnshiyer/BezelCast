@@ -1,21 +1,22 @@
 import SwiftUI
-import AVFoundation
 
 struct BezelView: View {
-    let session: AVCaptureSession
     let profile: DeviceProfile
-    let customFrame: NSImage?
+    let customFrame: CustomFrame?
+    let previewFrames: PreviewFrameStore
 
     var body: some View {
         GeometryReader { geo in
-            let hasCustomFrame = customFrame != nil
-            let reference = hasCustomFrame ? DeviceProfile.largestFrameSize : DeviceProfile.largestScreenSize
-            let outputSize = hasCustomFrame ? profile.frameSize : profile.screenSize
-            let scale = min(geo.size.width / reference.width,
-                            geo.size.height / reference.height)
+            let targetSize = DeviceDisplayLayout.previewSize(for: profile,
+                                                             customFrame: customFrame)
+            let fit = min(1,
+                          geo.size.width / targetSize.width,
+                          geo.size.height / targetSize.height)
 
-            LayeredCapturePreview(session: session, profile: profile, customFrame: customFrame)
-                .frame(width: outputSize.width * scale, height: outputSize.height * scale)
+            LayeredCapturePreview(profile: profile,
+                                  customFrame: customFrame,
+                                  previewFrames: previewFrames)
+                .frame(width: targetSize.width * fit, height: targetSize.height * fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
     }

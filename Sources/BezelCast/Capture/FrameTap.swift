@@ -8,14 +8,15 @@ import CoreVideo
 /// 1. As soon as a sample arrives, copy its pixel buffer into a private pool
 ///    we own. The capture sample's IOSurface is released the moment the
 ///    delegate returns, freeing the upstream pipeline.
-/// 2. Hand the copy off to a dedicated recorder queue (with a 1-frame in-
-///    flight cap) so a slow CIImage composite + HEVC-with-alpha encode can't
-///    push back on the video-data queue.
+/// 2. Hand copies off to recorder/preview compositor queues with a 1-frame
+///    in-flight cap, so slow CIImage work can't push back on the video-data
+///    queue.
 final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
     private let lock = NSLock()
     private var recorder: BezelRecorder?
-    private var hasFiredFirstFrame = false
-    private var firstFrameCallback: (@Sendable (CGSize) -> Void)?
+    private var previewSink: (@Sendable (CVPixelBuffer, CMTime, @escaping @Sendable () -> Void) -> Void)?
+    private var lastFrameSize: CGSize?
+    private var sizeChangeCallback: (@Sendable (CGSize) -> Void)?
     private var nextFrameCallback: (@Sendable (CVPixelBuffer) -> Void)?
 
     /// Private CVPixelBufferPool. Inputs get copied here in their source pixel
@@ -27,16 +28,30 @@ final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @u
 
     private let recorderQueue = DispatchQueue(label: "BezelCast.recorder", qos: .userInitiated)
     private var inFlightCount = 0  // guarded by lock
+    private var previewInFlight = false  // guarded by lock
 
     func setRecorder(_ recorder: BezelRecorder?) {
         lock.lock(); defer { lock.unlock() }
         self.recorder = recorder
     }
 
-    func setOnFirstFrame(_ callback: (@Sendable (CGSize) -> Void)?) {
+    func setPreviewSink(_ sink: (@Sendable (CVPixelBuffer, CMTime, @escaping @Sendable () -> Void) -> Void)?) {
         lock.lock(); defer { lock.unlock() }
-        firstFrameCallback = callback
-        hasFiredFirstFrame = false
+        previewSink = sink
+        if sink == nil {
+            previewInFlight = false
+        }
+    }
+
+    func setOnFrameSizeChange(_ callback: (@Sendable (CGSize) -> Void)?) {
+        lock.lock(); defer { lock.unlock() }
+        sizeChangeCallback = callback
+        lastFrameSize = nil
+    }
+
+    func resetFrameSize() {
+        lock.lock(); defer { lock.unlock() }
+        lastFrameSize = nil
     }
 
     func setOnNextFrame(_ callback: (@Sendable (CVPixelBuffer) -> Void)?) {
@@ -60,20 +75,15 @@ final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @u
         let height = CVPixelBufferGetHeight(sourceBuffer)
         let size = CGSize(width: width, height: height)
 
-        // Copy out of the shared capture pool ASAP. After this returns, the
-        // sample's IOSurface goes back to AVFoundation for the preview layer
-        // and the next frame.
-        guard let copy = copyOutOfCapturePool(source: sourceBuffer, width: width, height: height) else { return }
-
         lock.lock()
         let recorder = self.recorder
+        let previewSink = self.previewSink
         let nextFrameCB = nextFrameCallback
         nextFrameCallback = nil
-        var firstCB: (@Sendable (CGSize) -> Void)?
-        if !hasFiredFirstFrame, let cb = firstFrameCallback {
-            hasFiredFirstFrame = true
-            firstCB = cb
-            firstFrameCallback = nil
+        var sizeChangeCB: (@Sendable (CGSize) -> Void)?
+        if lastFrameSize != size {
+            lastFrameSize = size
+            sizeChangeCB = sizeChangeCallback
         }
         // Cap recorder backlog at 1 frame in flight. If the recorder is
         // behind, drop the new frame — AVAssetWriter handles timestamp gaps
@@ -81,7 +91,33 @@ final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @u
         // and freezing the preview.
         let shouldSubmit = recorder != nil && inFlightCount < 1
         if shouldSubmit { inFlightCount += 1 }
+        let shouldPreview = previewSink != nil && !previewInFlight
+        if shouldPreview { previewInFlight = true }
         lock.unlock()
+
+        sizeChangeCB?(size)
+
+        guard shouldSubmit || shouldPreview || nextFrameCB != nil else { return }
+
+        // Copy out of the shared capture pool ASAP. After this returns, the
+        // sample's IOSurface goes back to AVFoundation for the preview layer
+        // and the next frame.
+        guard let copy = copyOutOfCapturePool(source: sourceBuffer, width: width, height: height) else {
+            lock.lock()
+            if shouldSubmit { inFlightCount -= 1 }
+            if shouldPreview { previewInFlight = false }
+            lock.unlock()
+            return
+        }
+
+        if shouldPreview, let previewSink {
+            previewSink(copy, pts) { [weak self] in
+                guard let self else { return }
+                self.lock.lock()
+                self.previewInFlight = false
+                self.lock.unlock()
+            }
+        }
 
         if shouldSubmit, let recorder {
             recorderQueue.async { [weak self] in
@@ -93,7 +129,6 @@ final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @u
             }
         }
         nextFrameCB?(copy)
-        firstCB?(size)
     }
 
     /// Returns a freshly-allocated CVPixelBuffer (from our private pool) with

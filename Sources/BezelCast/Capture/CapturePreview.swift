@@ -1,33 +1,36 @@
 import SwiftUI
 import AppKit
-import AVFoundation
 
 struct LayeredCapturePreview: NSViewRepresentable {
-    let session: AVCaptureSession
     let profile: DeviceProfile
-    let customFrame: NSImage?
+    let customFrame: CustomFrame?
+    let previewFrames: PreviewFrameStore
 
     func makeNSView(context: Context) -> LayeredPreviewView {
         let view = LayeredPreviewView()
-        view.configure(session: session, profile: profile, customFrame: customFrame)
+        view.configure(profile: profile,
+                       customFrame: customFrame,
+                       previewFrames: previewFrames)
         return view
     }
 
     func updateNSView(_ nsView: LayeredPreviewView, context: Context) {
-        nsView.configure(session: session, profile: profile, customFrame: customFrame)
+        nsView.configure(profile: profile,
+                         customFrame: customFrame,
+                         previewFrames: previewFrames)
     }
 
     static func dismantleNSView(_ nsView: LayeredPreviewView, coordinator: ()) {
-        nsView.detachSession()
+        nsView.detachPreview()
     }
 }
 
 final class LayeredPreviewView: NSView {
-    private let previewLayer = AVCaptureVideoPreviewLayer()
-    private let bezelLayer = CALayer()
+    private let compositedLayer = CALayer()
 
     private var profile: DeviceProfile = DeviceProfile.catalog.first!
     private var hasCustomFrame = false
+    private weak var previewFrames: PreviewFrameStore?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -42,43 +45,46 @@ final class LayeredPreviewView: NSView {
         rootLayer.shadowOffset = CGSize(width: 0, height: -8)
         layer = rootLayer
 
-        previewLayer.videoGravity = .resizeAspect
-        previewLayer.masksToBounds = true
-        previewLayer.backgroundColor = NSColor.clear.cgColor
+        compositedLayer.contentsGravity = .resizeAspect
+        compositedLayer.masksToBounds = false
+        compositedLayer.isOpaque = false
+        compositedLayer.isHidden = true
 
-        bezelLayer.contentsGravity = .resize
-        bezelLayer.masksToBounds = false
-        bezelLayer.isOpaque = false
-
-        rootLayer.addSublayer(previewLayer)
-        rootLayer.addSublayer(bezelLayer)
+        rootLayer.addSublayer(compositedLayer)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    func configure(session: AVCaptureSession, profile: DeviceProfile, customFrame: NSImage?) {
-        if previewLayer.session !== session {
-            previewLayer.session = session
+    func configure(profile: DeviceProfile,
+                   customFrame: CustomFrame?,
+                   previewFrames: PreviewFrameStore) {
+        if self.previewFrames !== previewFrames {
+            self.previewFrames?.imageHandler = nil
+            self.previewFrames = previewFrames
+            previewFrames.imageHandler = { [weak self] image in
+                self?.displayCompositedPreview(image)
+            }
         }
 
         self.profile = profile
         hasCustomFrame = customFrame != nil
-
-        if let customFrame,
-           let cgImage = customFrame.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-            bezelLayer.contents = cgImage
-            bezelLayer.isHidden = false
-        } else {
-            bezelLayer.contents = nil
-            bezelLayer.isHidden = true
-        }
+        compositedLayer.isHidden = compositedLayer.contents == nil
 
         updateBackingScale()
         needsLayout = true
     }
 
-    func detachSession() {
-        previewLayer.session = nil
+    func detachPreview() {
+        previewFrames?.imageHandler = nil
+        previewFrames = nil
+    }
+
+    private func displayCompositedPreview(_ image: CGImage?) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        compositedLayer.contents = image
+        compositedLayer.isHidden = image == nil
+        CATransaction.commit()
     }
 
     override func viewDidMoveToWindow() {
@@ -98,34 +104,21 @@ final class LayeredPreviewView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
 
+        compositedLayer.frame = bounds
+
         if hasCustomFrame {
-            let scaleX = bounds.width / profile.frameSize.width
-            let scaleY = bounds.height / profile.frameSize.height
-            let screenWidth = profile.screenSize.width * scaleX
-            let screenHeight = profile.screenSize.height * scaleY
-            let screenX = profile.screenOffset.x * scaleX
-            let screenYFromTop = profile.screenOffset.y * scaleY
-            let screenY = bounds.height - screenYFromTop - screenHeight
-
-            previewLayer.frame = CGRect(x: screenX, y: screenY,
-                                        width: screenWidth, height: screenHeight)
-            previewLayer.cornerRadius = profile.screenCornerRadius * min(scaleX, scaleY)
-            bezelLayer.frame = bounds
-
-            let outerCorner = previewLayer.cornerRadius + min(screenX, screenYFromTop)
+            let shadowRadius = min(bounds.width, bounds.height) * 0.08
             layer?.shadowPath = CGPath(roundedRect: bounds,
-                                       cornerWidth: outerCorner,
-                                       cornerHeight: outerCorner,
+                                       cornerWidth: shadowRadius,
+                                       cornerHeight: shadowRadius,
                                        transform: nil)
         } else {
             let scale = min(bounds.width / profile.screenSize.width,
                             bounds.height / profile.screenSize.height)
-            previewLayer.frame = bounds
-            previewLayer.cornerRadius = profile.screenCornerRadius * scale
-            bezelLayer.frame = bounds
+            let shadowRadius = profile.screenCornerRadius * scale
             layer?.shadowPath = CGPath(roundedRect: bounds,
-                                       cornerWidth: previewLayer.cornerRadius,
-                                       cornerHeight: previewLayer.cornerRadius,
+                                       cornerWidth: shadowRadius,
+                                       cornerHeight: shadowRadius,
                                        transform: nil)
         }
 
@@ -135,7 +128,6 @@ final class LayeredPreviewView: NSView {
     private func updateBackingScale() {
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         layer?.contentsScale = scale
-        previewLayer.contentsScale = scale
-        bezelLayer.contentsScale = scale
+        compositedLayer.contentsScale = scale
     }
 }
