@@ -1,20 +1,17 @@
 # BezelCast
 
-Mirror your iPhone screen on macOS with a beautiful device bezel — open-source alternative to [Bezel](https://nonstrict.eu/bezel).
+Mirror your iPhone screen on macOS with optional custom device bezel art.
 
-Plug an iPhone in via USB, accept the **Trust** prompt, and BezelCast renders the live screen inside a programmatic device frame on a chromeless transparent window. Snap a screenshot or record a video — both export at the iPhone's native resolution with transparent corners outside the rounded device shape.
-
-![Floating pill toolbar with traffic lights and capture controls](https://via.placeholder.com/900x80?text=screenshot+TBD)
+Plug an iPhone in via USB, accept the **Trust** prompt, and BezelCast renders the live screen in a chromeless transparent window. Without a custom bezel, exports are the rounded screen itself. With a BYOB PNG, exports use the full bezel canvas with transparent corners.
 
 ## Features
 
 - **USB iPhone mirroring** via the [`kCMIOHardwarePropertyAllowScreenCaptureDevices`](https://developer.apple.com/documentation/coremediaio) trick — same path QuickTime Player uses.
 - **Auto-detected device** — connect any iPhone 12-17 (and SE), the app matches it against a catalog of 24 profiles by screen resolution.
-- **Programmatic default bezel** — thin black ring + Dynamic Island drawn via SwiftUI / `CGPath`. No bundled assets, fully legal.
-- **BYOB (Bring Your Own Bezel)** — upload a PNG that matches your iPhone's expected frame dimensions to override the default with photoreal Apple bezel art. In-memory only, no disk writes.
+- **BYOB (Bring Your Own Bezel)** — upload a PNG that matches your iPhone's expected frame dimensions. In-memory only, no disk writes.
 - **Screenshot** → PNG with transparent corners.
 - **Recording** → HEVC-with-alpha `.mov` (Apple's native alpha-preserving codec). Transparent corners survive into Final Cut, iMovie, Keynote, etc.
-- **Chromeless transparent window** with a floating pill toolbar (close/min/zoom traffic lights + device label + capture/record/upload controls). Same look as Apple's iPhone Mirroring app.
+- **Chromeless transparent window** with a floating pill toolbar (close/min/zoom traffic lights + device label + capture/record/profile/bezel controls). Same look as Apple's iPhone Mirroring app.
 
 ## Requirements
 
@@ -38,7 +35,7 @@ Or from the terminal (camera permission attaches to Terminal in this mode):
 swift run BezelCast
 ```
 
-A first launch will trigger a macOS Camera permission prompt — grant it. Plug in an iPhone, tap **Trust** on the device, and the live screen appears inside the bezel.
+A first launch will trigger a macOS Camera permission prompt — grant it. Plug in an iPhone, tap **Trust** on the device, and the live screen appears in the window.
 
 ## Usage
 
@@ -46,34 +43,34 @@ A first launch will trigger a macOS Camera permission prompt — grant it. Plug 
 | ------------------- | --------------------------------------------------------- |
 | 📷 (camera)          | Save a screenshot — file picker, exports PNG.             |
 | ⏺ → 🟥 (record)      | Start / stop recording — file picker on stop, exports `.mov`. |
-| 📱 (iPhone, gray pill) | Upload a custom bezel PNG. Must match the detected device's `frameSize` exactly; mismatch shows a red error banner. |
-| ✕ (clear, gray pill) | Remove the uploaded bezel and revert to programmatic default. |
+| 📱 + chevron         | Pick a compatible device profile.                         |
+| … (ellipsis)         | Add or remove a custom bezel PNG. The PNG must match the selected profile's `frameSize` exactly; mismatch shows a red error banner. |
 
-The pill's two-line title shows your iPhone's user-set name (e.g. *Vignesh's iPhone*) on top and the matched profile model + status (`Connected` / `Recording` / uploaded filename) underneath.
+The pill's two-line title shows your iPhone's user-set name (e.g. *Vignesh's iPhone*) on top and the matched profile model, recording timer, or uploaded filename underneath.
 
 ## BYOB — where to get high-quality bezel PNGs
 
-The default programmatic bezel works out of the box. For pixel-perfect Apple-style frames, source PNGs yourself.
+BezelCast does not ship bezel artwork. For pixel-perfect Apple-style frames, source PNGs yourself.
 
 ### Apple Design Resources
 
-Official iPhone bezel artwork lives at [developer.apple.com/design/resources](https://developer.apple.com/design/resources/). Export each device frame at the dimensions BezelCast asks for and upload it via the BYOB button.
+Official iPhone bezel artwork lives at [developer.apple.com/design/resources](https://developer.apple.com/design/resources/). Export each device frame at the dimensions BezelCast asks for and upload it from the ellipsis menu.
 
 ### Why we don't bundle the artwork
 
-Apple's bezel artwork is proprietary intellectual property, distributed under terms that don't permit redistribution by third parties. Including those PNGs in this repository would fall outside that license. To keep BezelCast legally clean for everyone who clones it, the project ships **zero Apple-derived assets**: the default bezel is hand-drawn in code, and any photoreal frames must be supplied by you from your own copy of Apple's design resources. Your licensing arrangement with Apple is between you and Apple — BezelCast is just the renderer.
+Apple's bezel artwork is proprietary intellectual property, distributed under terms that don't permit redistribution by third parties. Including those PNGs in this repository would fall outside that license. To keep BezelCast legally clean for everyone who clones it, the project ships **zero Apple-derived assets**. Any photoreal frames must be supplied by you from your own copy of Apple's design resources. Your licensing arrangement with Apple is between you and Apple — BezelCast is just the renderer.
 
 ### Required dimensions per profile
 
-When you click the iPhone (BYOB) button, BezelCast tells you the required size in the file picker — for example, *"Pick a PNG sized 1350×2760 for iPhone 17 Pro"*. Reference table:
+When you choose Add Bezel, BezelCast tells you the required size in the file picker — for example, *"Pick a PNG sized 1350×2760 for iPhone 17 Pro"*. Reference table:
 
 | Profile             | `frameSize`  |
 | ------------------- | ------------ |
 | iPhone 17 / 16 Pro Max          | 1470 × 3000 |
-| iPhone 14 / 15 Pro Max + Plus   | 1440 × 2940 |
+| iPhone 14 / 15 Pro Max + 15 / 16 Plus | 1440 × 2940 |
 | iPhone 12 / 13 Pro Max          | 1410 × 2904 |
-| iPhone 16 / 17 Pro              | 1350 × 2760 |
-| iPhone 14 Pro / 15 / 15 Pro / 16 / 17 | 1359 × 2736 |
+| iPhone 16 / 17 Pro + iPhone 17  | 1350 × 2760 |
+| iPhone 14 Pro / 15 / 15 Pro / 16 | 1359 × 2736 |
 | iPhone 12 / 13 / 14 + 12 / 13 Pro | 1290 × 2652 |
 | iPhone 12 / 13 mini             | 1190 × 2450 |
 
@@ -84,7 +81,6 @@ The PNG must have transparent pixels everywhere except the bezel material itself
 - **No audio.** HEVC-with-alpha + audio in the same `.mov` track is doable but not implemented. Recordings are silent.
 - **Portrait only.** Rotating the iPhone mid-session does not rotate the bezel.
 - **Locked iPhone shows the last frame.** When the screen locks, iOS keeps emitting the last frame; the preview freezes there. Same as QuickTime Player.
-- **Notched devices (iPhone 12-14, 12/13 Pro Max)** get a generic programmatic ring without an actual notch shape — only Dynamic Island devices have an island overlay.
 - **iPhone Mirroring (macOS Sequoia 15+)** must not be running on the same iPhone — Apple's screen capture is exclusive.
 - **iOS apps with screen-recording protection** (banking, Netflix, etc.) will black out their UI via the iOS `isCaptured` flag. There is no workaround.
 

@@ -166,7 +166,6 @@ final class DeviceCapture: ObservableObject {
     private func stopVideoOutput() {
         videoOutput.connection(with: .video)?.isEnabled = false
         _ = frameTap.cancelNextFrame()
-        frameTap.clear()
     }
 
     private func stopVideoOutputIfIdle() {
@@ -231,7 +230,6 @@ final class DeviceCapture: ObservableObject {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        frameTap.clear()
         let renderer = self.renderer
         let profile = self.profile
         let customFrameCI = self.customFrameCI

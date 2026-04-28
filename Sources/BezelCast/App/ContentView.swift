@@ -73,9 +73,11 @@ private struct FloatingControlBar: View {
 
             Spacer(minLength: 12)
 
-            captureGroup
-            profilePicker
-            ellipsisIcon
+            HStack(spacing: 6) {
+                captureGroup
+                profilePicker
+                bezelButton
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 11)
@@ -141,7 +143,7 @@ private struct FloatingControlBar: View {
                 Image(systemName: "iphone")
                     .font(.system(size: 18, weight: .regular))
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: 8, weight: .regular))
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 12)
@@ -186,28 +188,23 @@ private struct FloatingControlBar: View {
         return DeviceProfile.compatible(with: auto)
     }
 
-    /// Overflow menu — currently just the bezel toggle. Single-Image labels
-    /// don't trigger the borderlessButton-drops-children bug we hit on the
-    /// profile picker, so the native Menu is fine here.
-    private var ellipsisIcon: some View {
-        Menu {
-            Button(capture.customFrame == nil ? "Add Bezel..." : "Remove Bezel") {
-                if capture.customFrame == nil {
-                    capture.uploadFrame()
-                } else {
-                    capture.clearCustomFrame()
-                }
+    private var bezelButton: some View {
+        Button {
+            if capture.customFrame == nil {
+                capture.uploadFrame()
+            } else {
+                capture.clearCustomFrame()
             }
         } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(.white.opacity(0.85))
+            Image(systemName: capture.customFrame == nil ? "rectangle.portrait.badge.plus" : "rectangle.portrait.slash")
+                .font(.system(size: capture.customFrame == nil ? 15 : 16, weight: .medium))
+                .foregroundStyle(capture.customFrame == nil ? .white.opacity(0.9) : .red)
                 .frame(width: 30, height: 30)
-                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .background(Capsule().fill(Color.white.opacity(0.08)))
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
+        .help(capture.customFrame == nil ? "Add Bezel" : "Remove Bezel")
         .disabled(capture.session == nil)
         .opacity(capture.session == nil ? 0.4 : 1.0)
     }
@@ -232,7 +229,7 @@ private struct FloatingControlBar: View {
                 capture.startRecording()
             }
         } label: {
-            Image(systemName: capture.isRecording ? "stop.fill" : "record.circle")
+            Image(systemName: capture.isRecording ? "stop.circle.fill" : "record.circle")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(capture.isRecording ? .red : .white)
                 .frame(width: 30, height: 30)

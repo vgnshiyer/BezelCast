@@ -1,6 +1,6 @@
-@preconcurrency import AVFoundation
 import AppKit
 import CoreImage
+import CoreVideo
 
 struct BezelRenderer {
     let ciContext: CIContext

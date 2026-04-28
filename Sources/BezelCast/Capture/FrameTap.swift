@@ -13,7 +13,6 @@ import CoreVideo
 ///    push back on the video-data queue.
 final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
     private let lock = NSLock()
-    private var buffer: CVPixelBuffer?
     private var recorder: BezelRecorder?
     private var hasFiredFirstFrame = false
     private var firstFrameCallback: (@Sendable (CGSize) -> Void)?
@@ -28,11 +27,6 @@ final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @u
 
     private let recorderQueue = DispatchQueue(label: "BezelCast.recorder", qos: .userInitiated)
     private var inFlightCount = 0  // guarded by lock
-
-    var latest: CVPixelBuffer? {
-        lock.lock(); defer { lock.unlock() }
-        return buffer
-    }
 
     func setRecorder(_ recorder: BezelRecorder?) {
         lock.lock(); defer { lock.unlock() }
@@ -57,11 +51,6 @@ final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @u
         return hadCallback
     }
 
-    func clear() {
-        lock.lock(); defer { lock.unlock() }
-        buffer = nil
-    }
-
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
@@ -77,7 +66,6 @@ final class FrameTap: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @u
         guard let copy = copyOutOfCapturePool(source: sourceBuffer, width: width, height: height) else { return }
 
         lock.lock()
-        buffer = copy
         let recorder = self.recorder
         let nextFrameCB = nextFrameCallback
         nextFrameCallback = nil

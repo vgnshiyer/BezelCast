@@ -1,4 +1,4 @@
-import AppKit
+import CoreGraphics
 
 struct DeviceProfile: Equatable {
     let id: String
