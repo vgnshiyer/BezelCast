@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import CoreMediaIO
 import CoreImage
+import Metal
 import AppKit
 import Combine
 import UniformTypeIdentifiers
@@ -22,9 +23,30 @@ final class DeviceCapture: ObservableObject {
     private var connectObserver: NSObjectProtocol?
     private var disconnectObserver: NSObjectProtocol?
     private let frameTap = FrameTap()
-    private let videoOutput = AVCaptureVideoDataOutput()
+    private let videoOutput: AVCaptureVideoDataOutput = {
+        let output = AVCaptureVideoDataOutput()
+        // Let the device deliver its native uncompressed pixel format. Forcing
+        // BGRA here moves conversion and bandwidth into AVCapture's delivery
+        // graph, which is the part we must keep responsive for the preview.
+        output.alwaysDiscardsLateVideoFrames = true
+        return output
+    }()
     private let videoQueue = DispatchQueue(label: "BezelCast.video", qos: .userInitiated)
-    private let renderer = BezelRenderer(ciContext: CIContext())
+    private let renderer: BezelRenderer = {
+        // Explicitly Metal-backed so compositing runs on the GPU. The
+        // no-arg CIContext() can fall back to software in some configs and
+        // that's where bezel-on rendering blows past the 16ms frame budget.
+        // cacheIntermediates is FALSE because every captured frame is unique —
+        // caching wastes GPU memory and slows things down (per WWDC20 #10008).
+        let options: [CIContextOption: Any] = [
+            .useSoftwareRenderer: false,
+            .cacheIntermediates: false,
+        ]
+        if let device = MTLCreateSystemDefaultDevice() {
+            return BezelRenderer(ciContext: CIContext(mtlDevice: device, options: options))
+        }
+        return BezelRenderer(ciContext: CIContext(options: options))
+    }()
     private var recorder: BezelRecorder?
 
     init() {
@@ -91,9 +113,9 @@ final class DeviceCapture: ObservableObject {
         // Don't overwrite profile with garbage — keep the catalog default until first frame.
         clearCustomFrame()
 
-        // Enable the data output briefly so a frame can arrive for detection.
-        // The first-frame callback refines the profile and disables the connection
-        // again, so the steady-state preview path stays single-output.
+        // Briefly enable the data output so the first copied frame can identify
+        // the connected phone. Normal preview stays single-output; screenshot
+        // and recording turn the tap on only while they need frames.
         frameTap.setOnFirstFrame { [weak self] size in
             Task { @MainActor in
                 guard let self else { return }
@@ -103,7 +125,7 @@ final class DeviceCapture: ObservableObject {
                     self.profile = detected
                     self.clearCustomFrame()
                 }
-                self.videoOutput.connection(with: .video)?.isEnabled = false
+                self.stopVideoOutputIfIdle()
             }
         }
         videoOutput.connection(with: .video)?.isEnabled = true
@@ -143,7 +165,14 @@ final class DeviceCapture: ObservableObject {
 
     private func stopVideoOutput() {
         videoOutput.connection(with: .video)?.isEnabled = false
+        _ = frameTap.cancelNextFrame()
         frameTap.clear()
+    }
+
+    private func stopVideoOutputIfIdle() {
+        if !isRecording {
+            stopVideoOutput()
+        }
     }
 
     // MARK: - Custom frame upload
@@ -203,17 +232,29 @@ final class DeviceCapture: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         frameTap.clear()
+        let renderer = self.renderer
+        let profile = self.profile
+        let customFrameCI = self.customFrameCI
+
+        frameTap.setOnNextFrame { [weak self] buffer in
+            Task { @MainActor in
+                self?.stopVideoOutputIfIdle()
+            }
+            Task.detached(priority: .userInitiated) {
+                let image = renderer.screenshot(from: buffer, profile: profile, customFrame: customFrameCI)
+                guard let image else { return }
+                await MainActor.run {
+                    writePNGImage(image, to: url)
+                }
+            }
+        }
         startVideoOutput()
 
         Task { @MainActor in
-            defer { stopVideoOutput() }
-            let start = Date()
-            while frameTap.latest == nil && Date().timeIntervalSince(start) < 1.0 {
-                try? await Task.sleep(nanoseconds: 16_000_000)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if frameTap.cancelNextFrame() {
+                stopVideoOutputIfIdle()
             }
-            guard let buffer = frameTap.latest,
-                  let image = renderer.screenshot(from: buffer, profile: profile, customFrame: customFrameCI) else { return }
-            writePNG(image, to: url)
         }
     }
 
@@ -281,16 +322,17 @@ final class DeviceCapture: ObservableObject {
 
     // MARK: - Helpers
 
-    private func writePNG(_ image: NSImage, to url: URL) {
-        guard let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let data = bitmap.representation(using: .png, properties: [:]) else { return }
-        try? data.write(to: url)
-    }
-
     private func timestamp() -> String {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd-HHmmss"
         return f.string(from: Date())
     }
+}
+
+@MainActor
+private func writePNGImage(_ image: NSImage, to url: URL) {
+    guard let tiff = image.tiffRepresentation,
+          let bitmap = NSBitmapImageRep(data: tiff),
+          let data = bitmap.representation(using: .png, properties: [:]) else { return }
+    try? data.write(to: url)
 }

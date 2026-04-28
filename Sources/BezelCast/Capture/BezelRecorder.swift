@@ -39,7 +39,9 @@ final class BezelRecorder: @unchecked Sendable {
         guard result == kCVReturnSuccess, let output = outputBuffer else { return }
 
         renderer.composite(video: buffer, profile: profile, customFrame: customFrame, into: output)
-        adaptor.append(output, withPresentationTime: presentationTime)
+        if !adaptor.append(output, withPresentationTime: presentationTime) {
+            print("append failed: \(String(describing: writer?.error))")
+        }
     }
 
     func stop(completion: @escaping @Sendable (URL?) -> Void) {
@@ -64,8 +66,11 @@ final class BezelRecorder: @unchecked Sendable {
     }
 
     private func startWriting(time: CMTime) {
-        let outputWidth = Int(profile.frameSize.width)
-        let outputHeight = Int(profile.frameSize.height)
+        // With a custom bezel, output is the full bezel canvas; without,
+        // just the screen.
+        let outputSize = customFrame != nil ? profile.frameSize : profile.screenSize
+        let outputWidth = Int(outputSize.width)
+        let outputHeight = Int(outputSize.height)
 
         do {
             let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
@@ -87,6 +92,12 @@ final class BezelRecorder: @unchecked Sendable {
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
                 kCVPixelBufferWidthKey as String: outputWidth,
                 kCVPixelBufferHeightKey as String: outputHeight,
+                // IOSurface backing lets the CIContext (Metal) write directly
+                // into a GPU-readable surface and the encoder read from it
+                // without a copy. Without this, we round-trip through CPU
+                // memory every frame.
+                kCVPixelBufferIOSurfacePropertiesKey as String: [:] as CFDictionary,
+                kCVPixelBufferMetalCompatibilityKey as String: true,
             ]
             let adaptor = AVAssetWriterInputPixelBufferAdaptor(
                 assetWriterInput: input,

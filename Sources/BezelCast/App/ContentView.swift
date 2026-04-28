@@ -9,9 +9,12 @@ struct ContentView: View {
 
             if let session = capture.session {
                 BezelView(session: session, profile: capture.profile, customFrame: capture.customFrame)
-                    .padding(.top, 64)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
+                    // Toolbar pill sits at y=12 with ~52px height = 64px from
+                    // the top. Add a consistent 16px breathing gap on all four
+                    // sides — top stacks on top of the toolbar offset.
+                    .padding(.top, 80)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
             } else {
                 VStack(spacing: 14) {
                     Image(systemName: "iphone")
