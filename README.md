@@ -55,17 +55,11 @@ The pill's two-line title shows your iPhone's user-set name (e.g. *Vignesh's iPh
 
 The repo intentionally ships **zero Apple-derived art** for legal cleanliness. The default programmatic bezel works out of the box. For pixel-perfect Apple-style frames, source PNGs yourself:
 
-### Apple Design Resources (recommended for your own marketing material)
+### Apple Design Resources
 
 [developer.apple.com/design/resources](https://developer.apple.com/design/resources/) — free with an Apple Developer Program membership (free or paid tier). Download the iOS design kit (Sketch, Photoshop, or Figma) and export the device frame at the dimensions BezelCast asks for.
 
 License: limited to displaying *your* app on Apple devices in marketing materials. No tilting, no animating the bezel itself, no 3D rendering. See [Apple's marketing guidelines](https://developer.apple.com/app-store/marketing/guidelines/).
-
-### AppleFramer
-
-[github.com/TimBroddin/appleframer.com](https://github.com/TimBroddin/appleframer.com) — MIT-licensed open-source app with frame PNGs already exported under `public/frames/`. The dimensions in our `DeviceProfile.catalog` are aligned with this set, so a Tim PNG should drop in cleanly.
-
-Note: while the *code* is MIT, the underlying frame artwork traces back to Apple's design resources and is subject to the same license. Treat downloaded PNGs as you would Apple's originals.
 
 ### Required dimensions per profile
 
@@ -83,14 +77,6 @@ When you click the iPhone (BYOB) button, BezelCast tells you the required size i
 
 The PNG must have transparent pixels everywhere except the bezel material itself, with the screen area transparent at exactly the offset specified in `Bezel/DeviceProfile.swift`.
 
-## Architecture
-
-- **`App/`** — `BezelCastApp` + `AppDelegate` create a `KeyableBorderlessWindow` (custom `NSWindow` subclass that overrides `canBecomeKey` for chromeless windows). `ContentView` hosts the SwiftUI tree, `TrafficLights` renders the three colored circles, `WindowAccess` holds a weak reference to the window so the buttons can call `close()` / `miniaturize` / `zoom`.
-- **`Capture/`** — `DeviceCapture` owns the `AVCaptureSession`, lazily attaches a `AVCaptureVideoDataOutput` (toggling `connection.isEnabled` to keep idle latency low), and runs detection from the first delivered `CVPixelBuffer` size. `BezelRecorder` wraps `AVAssetWriter` for HEVC-with-alpha output.
-- **`Bezel/`** — `DeviceProfile` is the per-device metadata catalog. `BezelRenderer` composites video + bezel into Core Image. `BezelView` displays the live preview with the bezel ring drawn on top of the `CapturePreview`.
-
-The window is `.borderless` + transparent + `isMovableByWindowBackground` — drag from anywhere. The pill toolbar at the top is a SwiftUI `Capsule` with custom-drawn traffic lights wired to `NSWindow` actions.
-
 ## Known limitations
 
 - **No audio.** HEVC-with-alpha + audio in the same `.mov` track is doable but not implemented. Recordings are silent.
@@ -99,26 +85,6 @@ The window is `.borderless` + transparent + `isMovableByWindowBackground` — dr
 - **Notched devices (iPhone 12-14, 12/13 Pro Max)** get a generic programmatic ring without an actual notch shape — only Dynamic Island devices have an island overlay.
 - **iPhone Mirroring (macOS Sequoia 15+)** must not be running on the same iPhone — Apple's screen capture is exclusive.
 - **iOS apps with screen-recording protection** (banking, Netflix, etc.) will black out their UI via the iOS `isCaptured` flag. There is no workaround.
-
-## Project structure
-
-```
-Sources/BezelCast/
-├── App/
-│   ├── BezelCastApp.swift      # @main + AppDelegate
-│   ├── ContentView.swift       # main view, floating pill
-│   ├── TrafficLights.swift     # custom close/min/zoom buttons
-│   └── WindowAccess.swift      # weak NSWindow reference
-├── Capture/
-│   ├── DeviceCapture.swift     # AVCaptureSession orchestration
-│   ├── CapturePreview.swift    # NSViewRepresentable for AVCaptureVideoPreviewLayer
-│   ├── FrameTap.swift          # AVCaptureVideoDataOutput delegate
-│   └── BezelRecorder.swift     # AVAssetWriter wrapper
-└── Bezel/
-    ├── DeviceProfile.swift     # 24-device catalog + detect/generic
-    ├── BezelRenderer.swift     # Core Image compositing
-    └── BezelView.swift         # SwiftUI live preview + bezel chrome
-```
 
 ## License
 
