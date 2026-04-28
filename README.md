@@ -53,13 +53,15 @@ The pill's two-line title shows your iPhone's user-set name (e.g. *Vignesh's iPh
 
 ## BYOB — where to get high-quality bezel PNGs
 
-The repo intentionally ships **zero Apple-derived art** for legal cleanliness. The default programmatic bezel works out of the box. For pixel-perfect Apple-style frames, source PNGs yourself:
+The default programmatic bezel works out of the box. For pixel-perfect Apple-style frames, source PNGs yourself.
 
 ### Apple Design Resources
 
-[developer.apple.com/design/resources](https://developer.apple.com/design/resources/) — free with an Apple Developer Program membership (free or paid tier). Download the iOS design kit (Sketch, Photoshop, or Figma) and export the device frame at the dimensions BezelCast asks for.
+Official iPhone bezel artwork lives at [developer.apple.com/design/resources](https://developer.apple.com/design/resources/). Export each device frame at the dimensions BezelCast asks for and upload it via the BYOB button.
 
-License: limited to displaying *your* app on Apple devices in marketing materials. No tilting, no animating the bezel itself, no 3D rendering. See [Apple's marketing guidelines](https://developer.apple.com/app-store/marketing/guidelines/).
+### Why we don't bundle the artwork
+
+Apple's bezel artwork is proprietary intellectual property, distributed under terms that don't permit redistribution by third parties. Including those PNGs in this repository would fall outside that license. To keep BezelCast legally clean for everyone who clones it, the project ships **zero Apple-derived assets**: the default bezel is hand-drawn in code, and any photoreal frames must be supplied by you from your own copy of Apple's design resources. Your licensing arrangement with Apple is between you and Apple — BezelCast is just the renderer.
 
 ### Required dimensions per profile
 
