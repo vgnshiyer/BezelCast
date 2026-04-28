@@ -83,6 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.setFrame(nextFrame, display: true, animate: animated)
         }
         window.contentView?.layoutSubtreeIfNeeded()
+        // setFrame returns synchronously but the CGS frame change otherwise
+        // lands a tick later — long enough for SwiftUI to commit the new
+        // larger preview into the still-small window and get clipped.
+        CATransaction.flush()
     }
 
     private func constrained(_ size: CGSize, to visibleFrame: CGRect) -> CGSize {
