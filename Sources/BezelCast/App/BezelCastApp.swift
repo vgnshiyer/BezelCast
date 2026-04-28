@@ -42,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowAccess.window = window
         window.makeKeyAndOrderFront(nil)
         self.window = window
-        capture.didApplyPreviewConfiguration = { [weak self] configuration in
+        capture.willApplyPreviewConfiguration = { [weak self] configuration in
             self?.resizeWindowIfLayoutChanged(for: configuration, animated: false)
         }
         resizeWindowIfLayoutChanged(for: capture.previewConfiguration, animated: false)
@@ -65,31 +65,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let requiredSize = DeviceDisplayLayout.windowSize(for: configuration.profile,
                                                           customFrame: configuration.customFrame)
         let currentSize = window.frame.size
-        let targetSize = CGSize(width: max(currentSize.width, requiredSize.width),
-                                height: max(currentSize.height, requiredSize.height))
-        guard abs(currentSize.width - targetSize.width) > 8
-            || abs(currentSize.height - targetSize.height) > 8 else { return }
+        guard abs(currentSize.width - requiredSize.width) > 8
+            || abs(currentSize.height - requiredSize.height) > 8 else { return }
 
         let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame ?? window.frame
         let currentFrame = window.frame
-        let topLeft = CGPoint(x: currentFrame.minX, y: currentFrame.maxY)
-        let size = constrained(targetSize, to: visibleFrame)
-        let nextFrame = CGRect(x: topLeft.x,
-                               y: topLeft.y - size.height,
+        let topCenter = CGPoint(x: currentFrame.midX, y: currentFrame.maxY)
+        let size = constrained(requiredSize, to: visibleFrame)
+        var nextFrame = CGRect(x: topCenter.x - size.width / 2,
+                               y: topCenter.y - size.height,
                                width: size.width,
                                height: size.height)
+        nextFrame = constrained(nextFrame, to: visibleFrame)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0
             context.allowsImplicitAnimation = false
             window.setFrame(nextFrame, display: true, animate: animated)
         }
-        window.setFrameTopLeftPoint(topLeft)
         window.contentView?.layoutSubtreeIfNeeded()
     }
 
     private func constrained(_ size: CGSize, to visibleFrame: CGRect) -> CGSize {
         CGSize(width: min(size.width, visibleFrame.width),
                height: min(size.height, visibleFrame.height))
+    }
+
+    private func constrained(_ frame: CGRect, to visibleFrame: CGRect) -> CGRect {
+        var next = frame
+        next.origin.x = min(max(next.minX, visibleFrame.minX), visibleFrame.maxX - next.width)
+        next.origin.y = min(max(next.minY, visibleFrame.minY), visibleFrame.maxY - next.height)
+        return next
     }
 }
 

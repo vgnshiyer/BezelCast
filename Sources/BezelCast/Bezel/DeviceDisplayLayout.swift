@@ -32,8 +32,7 @@ enum DeviceDisplayLayout {
         guard let customFrame else { return profile.displaySize }
 
         if profile.hasPresetFrameGeometry {
-            let frameSize = customFrame.geometry.frameSize.scaled(by: 1 / profile.displayScale)
-            return frameSize.fitted(in: profile.displaySize)
+            return customFrame.geometry.frameSize.scaled(by: 1 / profile.displayScale)
         }
 
         let geometry = customFrame.geometry
@@ -44,21 +43,12 @@ enum DeviceDisplayLayout {
 
         let scale = min(profile.displaySize.width / screenRect.width,
                         profile.displaySize.height / screenRect.height)
-        let frameSize = geometry.frameSize.scaled(by: scale)
-        return frameSize.fitted(in: profile.displaySize)
+        return geometry.frameSize.scaled(by: scale)
     }
 }
 
 private extension CGSize {
     func scaled(by scale: CGFloat) -> CGSize {
         CGSize(width: width * scale, height: height * scale)
-    }
-
-    func fitted(in boundingSize: CGSize) -> CGSize {
-        guard width > 0, height > 0 else { return self }
-        let scale = min(1,
-                        boundingSize.width / width,
-                        boundingSize.height / height)
-        return scaled(by: scale)
     }
 }

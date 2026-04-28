@@ -141,7 +141,7 @@ private struct FloatingControlBar: View {
     }
 
     private var titleLine: String {
-        guard capture.session != nil else { return "Bezel Cast" }
+        guard capture.session != nil else { return "BezelCast" }
         return capture.deviceName ?? capture.profile.displayName
     }
 
