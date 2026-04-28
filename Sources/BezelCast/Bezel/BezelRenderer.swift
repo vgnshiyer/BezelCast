@@ -22,7 +22,8 @@ struct BezelRenderer {
                       maxLongSide: CGFloat = 1800) -> CGImage? {
         guard let composite = compositeImage(buffer: buffer,
                                              profile: profile,
-                                             customFrame: customFrame) else { return nil }
+                                             customFrame: customFrame,
+                                             customScreenBleed: customFrame == nil ? 0 : 2) else { return nil }
         let extent = composite.extent
         guard extent.width > 0, extent.height > 0 else { return nil }
 
@@ -50,7 +51,8 @@ struct BezelRenderer {
     /// detected transparent cutout with the bezel composited on top.
     private func compositeImage(buffer: CVPixelBuffer,
                                 profile: DeviceProfile,
-                                customFrame: RenderFrame?) -> CIImage? {
+                                customFrame: RenderFrame?,
+                                customScreenBleed: CGFloat = 0) -> CIImage? {
         let videoCI = CIImage(cvPixelBuffer: buffer)
         let videoExtent = videoCI.extent
         guard videoExtent.width > 0, videoExtent.height > 0 else { return nil }
@@ -71,10 +73,16 @@ struct BezelRenderer {
             let screenRect = CGRect(x: tx, y: ty,
                                     width: screenRectTopLeft.width,
                                     height: screenRectTopLeft.height)
-            guard let mask = roundedMask(rect: screenRect,
-                                         radius: profile.scaledCornerRadius(for: screenRect.size)) else { return nil }
-            let maskedVideo = positioned.applyingFilter("CISourceInCompositing",
-                                                        parameters: [kCIInputBackgroundImageKey: mask])
+            let maskRect = screenRect.bleeding(by: customScreenBleed,
+                                               inside: CGRect(origin: .zero, size: geometry.frameSize))
+            let cornerRadius = profile.scaledCornerRadius(for: screenRect.size) + max(0, customScreenBleed)
+            guard let mask = roundedMask(rect: maskRect,
+                                         radius: cornerRadius) else { return nil }
+            let video = customScreenBleed > 0
+                ? positioned.clampedToExtent().cropped(to: maskRect)
+                : positioned
+            let maskedVideo = video.applyingFilter("CISourceInCompositing",
+                                                   parameters: [kCIInputBackgroundImageKey: mask])
             return customFrame.image.composited(over: maskedVideo)
         } else {
             let scaleX = profile.screenSize.width / videoExtent.width
@@ -111,5 +119,14 @@ private extension CIImage {
             .transformed(by: CGAffineTransform(translationX: tx, y: ty))
         let clear = CIImage(color: .clear).cropped(to: target)
         return fitted.composited(over: clear).cropped(to: target)
+    }
+}
+
+private extension CGRect {
+    func bleeding(by amount: CGFloat, inside bounds: CGRect) -> CGRect {
+        guard amount > 0 else { return self }
+        let expanded = insetBy(dx: -amount, dy: -amount)
+        let bounded = expanded.intersection(bounds)
+        return bounded.isNull ? self : bounded
     }
 }
