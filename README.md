@@ -1,6 +1,6 @@
 # BezelCast
 
-Mirror your iPhone or iPad screen on macOS with optional custom device bezel art.
+Mirror your iPhone or iPad screen on macOS.
 
 ## Features
 
