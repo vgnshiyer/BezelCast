@@ -5,6 +5,11 @@ let package = Package(
     name: "BezelCast",
     platforms: [.macOS(.v14)],
     targets: [
-        .executableTarget(name: "BezelCast"),
+        .executableTarget(
+            name: "BezelCast",
+            resources: [
+                .process("Resources")
+            ]
+        ),
     ]
 )

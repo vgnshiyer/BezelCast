@@ -1,6 +1,8 @@
 .DS_Store
+.claude/
 .build/
 .swiftpm/
 DerivedData/
 *.xcodeproj
 Package.resolved
+dist/
