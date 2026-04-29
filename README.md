@@ -1,5 +1,7 @@
 # BezelCast
 
+I Built this because I didn't want to pay $99 for getbezel.app.
+
 Mirror your iPhone or iPad screen on macOS.
 
 ## Features
