@@ -6,9 +6,9 @@ struct BezelCastApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        // No WindowGroup — AppDelegate creates the window manually so we
-        // can use a custom NSWindow subclass without object_setClass hacks
-        // (those break SwiftUI's KVO observers on the window).
+        // No WindowGroup — AppDelegate builds the window manually so it can
+        // configure the chromeless transparent style and pre-size it before
+        // it ever appears on screen.
         Settings { EmptyView() }
     }
 }
@@ -19,33 +19,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let windowAccess = WindowAccess()
     private var window: NSWindow?
     private var lastWindowLayoutKey: WindowLayoutKey?
+    /// Token for the local mouse-moved monitor that swaps in the resize
+    /// cursor near the window edges. Held so the closure stays alive.
+    private var resizeCursorMonitor: Any?
+    /// Tracks whether the cursor was last set to a resize cursor by us, so we
+    /// only reset to .arrow on the transition back into the interior — that
+    /// way SwiftUI keeps owning the cursor everywhere else.
+    private var cursorIsResizeCursor = false
+    /// Width of the edge zone where the resize cursor appears.
+    private let resizeEdgeThickness: CGFloat = 6
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let content = ContentView(capture: capture)
             .environmentObject(windowAccess)
             .frame(minWidth: 360, minHeight: 360)
 
-        let window = KeyableBorderlessWindow(
+        // .titled (not .borderless) so AppKit gives us the standard edge-hover
+        // resize cursors and drag-to-resize behavior. The title bar is hidden
+        // visually; the SwiftUI floating pill still owns the top of the window.
+        let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 420, height: 820),
-            styleMask: [.borderless, .resizable, .closable, .miniaturizable, .fullSizeContentView],
+            styleMask: [.titled, .resizable, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.standardWindowButton(.closeButton)?.isHidden = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+        window.contentMinSize = NSSize(width: 360, height: 360)
         window.contentView = NSHostingView(rootView: content)
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
         window.isMovableByWindowBackground = true
+        window.acceptsMouseMovedEvents = true
         window.center()
         window.setFrameAutosaveName("BezelCastMainWindow")
 
         windowAccess.window = window
         window.makeKeyAndOrderFront(nil)
         self.window = window
+        installResizeCursorMonitor()
         capture.willApplyPreviewConfiguration = { [weak self] configuration in
             self?.resizeWindowIfLayoutChanged(for: configuration, animated: false)
         }
         resizeWindowIfLayoutChanged(for: capture.previewConfiguration, animated: false)
+    }
+
+    /// Hooks into the app's local event stream to swap in the system resize
+    /// cursor whenever the pointer is within `resizeEdgeThickness` of an
+    /// edge. Cursor rects and tracking areas didn't fire on this transparent
+    /// titled-but-chromeless window — SwiftUI's hosting view eats subview
+    /// cursor rects, and the OS's normal frame-edge tracking only kicks in
+    /// when there's an opaque frame outside the content view. The event
+    /// monitor sits above all of that.
+    private func installResizeCursorMonitor() {
+        resizeCursorMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
+            self?.updateResizeCursor(for: event)
+            return event
+        }
+    }
+
+    private func updateResizeCursor(for event: NSEvent) {
+        guard let window, event.window === window,
+              let contentView = window.contentView else { return }
+        let bounds = contentView.bounds
+        let location = event.locationInWindow
+        let t = resizeEdgeThickness
+
+        // locationInWindow has y growing upward, so y near 0 is the bottom
+        // edge and y near bounds.height is the top edge.
+        let nearLeft = location.x >= 0 && location.x <= t
+        let nearRight = location.x >= bounds.width - t && location.x <= bounds.width
+        let nearTop = location.y >= bounds.height - t && location.y <= bounds.height
+        let nearBottom = location.y >= 0 && location.y <= t
+
+        if (nearLeft || nearRight) && !nearTop && !nearBottom {
+            NSCursor.resizeLeftRight.set()
+            cursorIsResizeCursor = true
+        } else if (nearTop || nearBottom) && !nearLeft && !nearRight {
+            NSCursor.resizeUpDown.set()
+            cursorIsResizeCursor = true
+        } else if cursorIsResizeCursor {
+            // Only restore once on the way out so SwiftUI's hover effects
+            // (pointing-hand on buttons, etc.) keep working.
+            NSCursor.arrow.set()
+            cursorIsResizeCursor = false
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -100,13 +162,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         next.origin.y = min(max(next.minY, visibleFrame.minY), visibleFrame.maxY - next.height)
         return next
     }
-}
-
-/// .borderless windows reject key/main status by default, breaking keyboard
-/// shortcuts and `NSApp.keyWindow` access. Override both to true.
-final class KeyableBorderlessWindow: NSWindow {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
 }
 
 private struct WindowLayoutKey: Equatable {
