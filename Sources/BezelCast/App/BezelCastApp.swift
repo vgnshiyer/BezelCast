@@ -2,14 +2,17 @@ import SwiftUI
 import AppKit
 
 @main
-struct BezelCastApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    var body: some Scene {
-        // No WindowGroup — AppDelegate builds the window manually so it can
-        // configure the chromeless transparent style and pre-size it before
-        // it ever appears on screen.
-        Settings { EmptyView() }
+@MainActor
+enum BezelCastApp {
+    static func main() {
+        // AppDelegate owns the single window. An empty SwiftUI Settings scene
+        // adds another window lifecycle even though we have no settings UI.
+        let application = NSApplication.shared
+        let delegate = AppDelegate()
+        application.delegate = delegate
+        withExtendedLifetime(delegate) {
+            application.run()
+        }
     }
 }
 
@@ -29,6 +32,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Width of the edge zone where the resize cursor appears.
     private let resizeEdgeThickness: CGFloat = 6
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // A SwiftPM executable launched from Terminal has no app bundle and
+        // can inherit .prohibited. Explicitly opt into a foreground GUI app.
+        NSApp.setActivationPolicy(.regular)
+        ApplicationMenu.install()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let content = ContentView(capture: capture)
             .environmentObject(windowAccess)
@@ -43,6 +53,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
+        window.title = "BezelCast"
+        window.isReleasedWhenClosed = false
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.standardWindowButton(.closeButton)?.isHidden = true
@@ -66,6 +78,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.resizeWindowIfLayoutChanged(for: configuration, animated: false)
         }
         resizeWindowIfLayoutChanged(for: capture.previewConfiguration, animated: false)
+        NSApp.activate()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        window?.deminiaturize(nil)
+        window?.makeKeyAndOrderFront(nil)
+        sender.activate()
+        return true
     }
 
     /// Hooks into the app's local event stream to swap in the system resize

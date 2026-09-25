@@ -24,10 +24,29 @@ final class DeviceCapture: ObservableObject {
     @Published private(set) var autoDetectedProfile: DeviceProfile?
     @Published private(set) var deviceName: String?
     @Published private(set) var customFrameName: String?
+    @Published private(set) var selectedBezelID = "automatic"
     let previewFrames = PreviewFrameStore()
 
     var profile: DeviceProfile { previewConfiguration.profile }
     var customFrame: CustomFrame? { previewConfiguration.customFrame }
+
+    var availableBezels: [BezelOption] {
+        guard let autoDetectedProfile else { return BezelLibrary.options }
+        return BezelLibrary.compatible(with: autoDetectedProfile)
+    }
+    var hasImportedFrame: Bool {
+        let reference = autoDetectedProfile ?? profile
+        guard let importedProfile else { return false }
+        return importedProfile.family == reference.family
+            && abs(importedProfile.aspectRatio - reference.aspectRatio) < 0.05
+    }
+
+    private let preferences: UserDefaults
+    private var importedFrame: CustomFrame?
+    private var importedProfile: DeviceProfile?
+    private var bezelLoadTask: Task<Void, Never>?
+    private var pendingProfile: DeviceProfile?
+    private var bezelRequestID = UUID()
 
     private var connectObserver: NSObjectProtocol?
     private var disconnectObserver: NSObjectProtocol?
@@ -61,7 +80,10 @@ final class DeviceCapture: ObservableObject {
                                                            frameStore: previewFrames)
     var willApplyPreviewConfiguration: ((PreviewConfiguration) -> Void)?
 
-    init() {
+    init(preferences: UserDefaults = .standard, startCapture: Bool = true) {
+        self.preferences = preferences
+        restoreBezel(for: profile)
+        guard startCapture else { return }
         enableiOSScreenCaptureDevices()
         videoOutput.setSampleBufferDelegate(frameTap, queue: videoQueue)
         frameTap.setOnFrameSizeChange { [weak self] size in
@@ -95,6 +117,7 @@ final class DeviceCapture: ObservableObject {
     }
 
     deinit {
+        bezelLoadTask?.cancel()
         customFrameErrorDismissTask?.cancel()
         if let connectObserver {
             NotificationCenter.default.removeObserver(connectObserver)
@@ -138,10 +161,10 @@ final class DeviceCapture: ObservableObject {
         if hintedSize.width > 0,
            hintedSize.height > 0,
            let hintedProfile = DeviceProfile.detect(for: hintedSize) {
-            applyPreview(profile: hintedProfile, customFrame: nil)
+            restoreBezel(for: hintedProfile)
         }
         // Don't overwrite profile with garbage — keep the catalog default until first frame.
-        clearCustomFrame()
+        autoDetectedProfile = nil
 
         // Keep the data output enabled for lightweight size observation. The
         // delegate does not copy frames unless screenshot/recording needs one,
@@ -166,7 +189,8 @@ final class DeviceCapture: ObservableObject {
         session = nil
         deviceName = nil
         autoDetectedProfile = nil
-        clearCustomFrame()
+        cancelBezelLoad()
+        previewFrames.display(nil)
         status = "Unsupported device: \(name)\nBezelCast supports known iPhone and iPad screen sizes.\nCaptured size: \(Int(capturedSize.width))×\(Int(capturedSize.height))"
     }
 
@@ -179,12 +203,12 @@ final class DeviceCapture: ObservableObject {
         session = nil
         deviceName = nil
         autoDetectedProfile = nil
-        clearCustomFrame()
+        cancelBezelLoad()
+        previewFrames.display(nil)
         status = "Disconnected. Plug in a device."
     }
 
     private func applyPreview(profile: DeviceProfile, customFrame: CustomFrame?) {
-        let shouldClearPreview = (self.customFrame == nil) != (customFrame == nil)
         let configuration = PreviewConfiguration(profile: profile, customFrame: customFrame)
         willApplyPreviewConfiguration?(configuration)
         previewCompositor.setConfiguration(configuration)
@@ -194,20 +218,20 @@ final class DeviceCapture: ObservableObject {
                                presentationTime: pts,
                                completion: completion)
         }
-        if shouldClearPreview {
-            previewFrames.display(nil)
-        }
+        // Keep the last image visible until the next composited frame arrives.
+        // Switching frames must not blank the live preview or restart capture.
+        recorder?.setConfiguration(profile: profile, customFrame: customFrame)
         previewConfiguration = configuration
     }
 
-    private func handleFrameSize(_ size: CGSize) {
+    func handleFrameSize(_ size: CGSize) {
         guard let detected = DeviceProfile.detect(for: size) else {
             rejectUnsupportedDevice(named: deviceName ?? "Device", capturedSize: size)
             return
         }
 
         let hadDetectedProfile = autoDetectedProfile != nil
-        let selectedProfile = profile
+        let selectedProfile = pendingProfile ?? profile
         autoDetectedProfile = detected
 
         let nextProfile: DeviceProfile
@@ -219,31 +243,106 @@ final class DeviceCapture: ObservableObject {
             nextProfile = detected
         }
 
-        guard nextProfile != profile else { return }
-        let previousID = profile.id
-        let nextCustomFrame: CustomFrame?
-        if let frame = customFrame {
-            if previousID == nextProfile.id, let orientedFrame = frame.oriented(to: nextProfile) {
-                nextCustomFrame = orientedFrame
-            } else {
-                nextCustomFrame = nil
-                customFrameName = nil
-                setCustomFrameError(nil)
-            }
+        if !hadDetectedProfile || selectedProfile.family != detected.family
+            || abs(selectedProfile.aspectRatio - detected.aspectRatio) >= 0.05 {
+            restoreBezel(for: nextProfile)
         } else {
-            nextCustomFrame = nil
+            applySelectedBezel(to: nextProfile)
         }
-        applyPreview(profile: nextProfile, customFrame: nextCustomFrame)
     }
 
-    /// User-driven profile override from the picker. Custom-uploaded bezels
-    /// are cleared because their cutout geometry was validated against the
-    /// previous profile and may not match the new one.
+    /// Keep a finish only if the next model was released in that finish.
     func selectProfile(_ newProfile: DeviceProfile) {
-        guard newProfile != profile else { return }
-        customFrameName = nil
+        if let option = BezelLibrary.option(id: selectedBezelID) {
+            selectedBezelID = BezelLibrary.option(for: newProfile, preferring: option.finish)?.id ?? "automatic"
+        } else if selectedBezelID == "custom" {
+            selectedBezelID = "automatic"
+        }
+        saveBezelPreference(for: newProfile)
+        applySelectedBezel(to: newProfile)
+    }
+
+    func selectBezel(_ id: String) {
+        let reference = autoDetectedProfile ?? profile
+        if let option = BezelLibrary.option(id: id) {
+            guard availableBezels.contains(where: { $0.id == id }) else { return }
+            selectedBezelID = id
+            saveBezelPreference(for: option.profile)
+            applySelectedBezel(to: option.profile.oriented(matching: reference.screenSize))
+        } else if id == "automatic" || id == "none" {
+            selectedBezelID = id
+            saveBezelPreference(for: reference)
+            applySelectedBezel(to: id == "automatic" ? reference : (pendingProfile ?? profile))
+        } else if id == "custom", let importedProfile,
+                  importedProfile.family == reference.family,
+                  abs(importedProfile.aspectRatio - reference.aspectRatio) < 0.05 {
+            selectedBezelID = id
+            applySelectedBezel(to: importedProfile.oriented(matching: reference.screenSize))
+        }
+    }
+
+    private func preferenceKey(for profile: DeviceProfile) -> String {
+        "BezelCast.bezel.\(profile.family == .iPhone ? "iphone" : "ipad")"
+    }
+
+    private func saveBezelPreference(for profile: DeviceProfile) {
+        // Custom files remain available for this launch; built-ins need no file access.
+        guard selectedBezelID != "custom" else { return }
+        preferences.set(selectedBezelID, forKey: preferenceKey(for: profile))
+    }
+
+    private func restoreBezel(for profile: DeviceProfile) {
+        let savedID = preferences.string(forKey: preferenceKey(for: profile)) ?? "automatic"
+        if let option = BezelLibrary.restoredOption(id: savedID, compatibleWith: profile) {
+            selectedBezelID = option.id
+            saveBezelPreference(for: profile)
+            applySelectedBezel(to: option.profile.oriented(matching: profile.screenSize))
+        } else {
+            selectedBezelID = savedID == "none" ? "none" : "automatic"
+            applySelectedBezel(to: profile)
+        }
+    }
+
+    private func cancelBezelLoad() {
+        bezelLoadTask?.cancel()
+        bezelLoadTask = nil
+        pendingProfile = nil
+        bezelRequestID = UUID()
+    }
+
+    private func applySelectedBezel(to nextProfile: DeviceProfile) {
+        cancelBezelLoad()
         setCustomFrameError(nil)
-        applyPreview(profile: newProfile, customFrame: nil)
+        if selectedBezelID == "none" {
+            customFrameName = nil
+            applyPreview(profile: nextProfile, customFrame: nil)
+            return
+        }
+        if selectedBezelID == "custom", let frame = importedFrame?.oriented(to: nextProfile) {
+            customFrameName = frame.name
+            applyPreview(profile: nextProfile, customFrame: frame)
+            return
+        }
+        let option = BezelLibrary.option(id: selectedBezelID) ?? BezelLibrary.automatic(for: nextProfile)
+        guard let option else { return }
+        let frameProfile = option.profile.oriented(matching: nextProfile.screenSize)
+        pendingProfile = frameProfile
+        let requestID = bezelRequestID
+        // Rasterizing and rotating native-resolution artwork must not stall the UI.
+        bezelLoadTask = Task { [weak self] in
+            let frame = await BezelFrameLoader.shared.frame(for: option, orientedTo: frameProfile)
+            guard !Task.isCancelled, let self, self.bezelRequestID == requestID else { return }
+            guard let frame else {
+                self.bezelLoadTask = nil
+                self.pendingProfile = nil
+                self.setCustomFrameError("Couldn't load \(option.name). Try another bezel.")
+                return
+            }
+            self.customFrameName = frame.name
+            self.applyPreview(profile: frameProfile, customFrame: frame)
+            self.bezelLoadTask = nil
+            self.pendingProfile = nil
+        }
     }
 
     private func startVideoOutput() {
@@ -253,6 +352,8 @@ final class DeviceCapture: ObservableObject {
     private func stopVideoOutput() {
         videoOutput.connection(with: .video)?.isEnabled = false
         _ = frameTap.cancelNextFrame()
+        previewCompositor.setConfiguration(nil)
+        frameTap.setPreviewSink(nil)
     }
 
     private func cancelPendingFrameRequest() {
@@ -280,16 +381,10 @@ final class DeviceCapture: ObservableObject {
     }
 
     func clearCustomFrame() {
-        applyPreview(profile: profile, customFrame: nil)
-        customFrameName = nil
-        setCustomFrameError(nil)
+        selectBezel("none")
     }
 
     private var uploadPanelMessage: String {
-        if profile.hasPresetFrameGeometry {
-            let size = profile.frameSize
-            return "Pick a PNG sized \(Int(size.width))×\(Int(size.height)) or \(Int(size.height))×\(Int(size.width)) for \(profile.displayName)."
-        }
         return "Pick a bezel PNG with a transparent screen cutout matching \(profile.displayName)'s display aspect."
     }
 
@@ -307,7 +402,7 @@ final class DeviceCapture: ObservableObject {
         }
     }
 
-    private func loadCustomFrame(from url: URL) {
+    func loadCustomFrame(from url: URL) {
         guard let nsImage = NSImage(contentsOf: url),
               let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             setCustomFrameError("Couldn't read \(url.lastPathComponent).")
@@ -315,28 +410,15 @@ final class DeviceCapture: ObservableObject {
         }
 
         let pxSize = CGSize(width: cgImage.width, height: cgImage.height)
-        let geometry: FrameGeometry
-        if profile.hasPresetFrameGeometry {
-            let expected = profile.frameSize
-            if pxSize.matches(expected) {
-                geometry = profile.defaultFrameGeometry
-            } else if pxSize.matches(expected.swapped) {
-                geometry = profile.defaultFrameGeometry.rotated(clockwise: !profile.isLandscape)
-            } else {
-                setCustomFrameError("Image is \(Int(pxSize.width))×\(Int(pxSize.height)). \(profile.displayName) needs \(Int(expected.width))×\(Int(expected.height)) or \(Int(expected.height))×\(Int(expected.width)).")
-                return
-            }
-        } else {
-            guard let screenRect = CustomFrameDetector.screenRect(in: cgImage) else {
-                setCustomFrameError("Couldn't find a transparent screen cutout in \(url.lastPathComponent).")
-                return
-            }
-            guard screenRect.hasAspect(of: profile.screenSize) else {
-                setCustomFrameError("Cutout is \(Int(screenRect.width))×\(Int(screenRect.height)). \(profile.displayName) needs a \(Int(profile.screenSize.width))×\(Int(profile.screenSize.height)) aspect.")
-                return
-            }
-            geometry = FrameGeometry(frameSize: pxSize, screenRect: screenRect)
+        guard let screenRect = CustomFrameDetector.screenRect(in: cgImage) else {
+            setCustomFrameError("Couldn't find a transparent screen cutout in \(url.lastPathComponent).")
+            return
         }
+        guard screenRect.hasAspect(of: profile.screenSize) else {
+            setCustomFrameError("Cutout is \(Int(screenRect.width))×\(Int(screenRect.height)). \(profile.displayName) needs a \(Int(profile.screenSize.width))×\(Int(profile.screenSize.height)) aspect.")
+            return
+        }
+        let geometry = FrameGeometry(frameSize: pxSize, screenRect: screenRect)
 
         let name = url.deletingPathExtension().lastPathComponent
         guard let customFrame = CustomFrame.make(name: name,
@@ -347,6 +429,10 @@ final class DeviceCapture: ObservableObject {
             setCustomFrameError("\(url.lastPathComponent) doesn't match \(profile.displayName)'s current orientation.")
             return
         }
+        cancelBezelLoad()
+        importedFrame = customFrame
+        importedProfile = profile
+        selectedBezelID = "custom"
         applyPreview(profile: profile, customFrame: customFrame)
         customFrameName = name
         setCustomFrameError(nil)
@@ -470,12 +556,4 @@ private func writePNGImage(_ image: NSImage, to url: URL) {
           let bitmap = NSBitmapImageRep(data: tiff),
           let data = bitmap.representation(using: .png, properties: [:]) else { return }
     try? data.write(to: url)
-}
-
-private extension CGSize {
-    var swapped: CGSize { CGSize(width: height, height: width) }
-
-    func matches(_ other: CGSize, tolerance: CGFloat = 1) -> Bool {
-        abs(width - other.width) < tolerance && abs(height - other.height) < tolerance
-    }
 }

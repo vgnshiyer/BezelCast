@@ -4,13 +4,32 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="BezelCast"
 BUNDLE_ID="com.vgnshiyer.BezelCast"
-VERSION="${VERSION:-0.1.0}"
-BUILD_NUMBER="${BUILD_NUMBER:-1}"
+VERSION="${VERSION:-0.2.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-3}"
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+NOTARIZE="${NOTARIZE:-0}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-bezelcast-notary}"
+NOTARY_TIMEOUT="${NOTARY_TIMEOUT:-30m}"
 DIST_DIR="$ROOT_DIR/dist"
 APP_DIR="$DIST_DIR/$APP_NAME.app"
 DMG_ROOT="$DIST_DIR/dmg-root"
 DMG_PATH="$DIST_DIR/$APP_NAME.dmg"
 ICON_PATH="$ROOT_DIR/Sources/BezelCast/Resources/AppIcon.icns"
+ENTITLEMENTS_PATH="$ROOT_DIR/Packaging/BezelCast.entitlements"
+
+find_developer_id_identity() {
+    security find-identity -v -p codesigning 2>/dev/null \
+        | sed -n 's/.*"\(Developer ID Application: .*[^"]\)".*/\1/p' \
+        | head -n 1
+}
+
+if [[ "$NOTARIZE" == "1" && -z "$SIGN_IDENTITY" ]]; then
+    SIGN_IDENTITY="$(find_developer_id_identity)"
+    if [[ -z "$SIGN_IDENTITY" ]]; then
+        echo "error: NOTARIZE=1 requires a Developer ID Application signing identity." >&2
+        exit 1
+    fi
+fi
 
 cd "$ROOT_DIR"
 swift build -c release
@@ -55,7 +74,20 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --deep --sign - "$APP_DIR" >/dev/null
+if [[ -n "$SIGN_IDENTITY" ]]; then
+    codesign \
+        --force \
+        --deep \
+        --options runtime \
+        --timestamp \
+        --entitlements "$ENTITLEMENTS_PATH" \
+        --sign "$SIGN_IDENTITY" \
+        "$APP_DIR" >/dev/null
+else
+    codesign --force --deep --sign - "$APP_DIR" >/dev/null
+fi
+
+codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
 cp -R "$APP_DIR" "$DMG_ROOT/$APP_NAME.app"
 ln -s /Applications "$DMG_ROOT/Applications"
@@ -66,5 +98,21 @@ hdiutil create \
     -ov \
     -format UDZO \
     "$DMG_PATH"
+
+if [[ -n "$SIGN_IDENTITY" ]]; then
+    codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG_PATH" >/dev/null
+    codesign --verify --verbose=2 "$DMG_PATH"
+fi
+
+if [[ "$NOTARIZE" == "1" ]]; then
+    xcrun notarytool submit "$DMG_PATH" \
+        --keychain-profile "$NOTARY_PROFILE" \
+        --timeout "$NOTARY_TIMEOUT" \
+        --wait
+
+    xcrun stapler staple "$DMG_PATH"
+    xcrun stapler validate "$DMG_PATH"
+    spctl -a -vv --type open "$DMG_PATH"
+fi
 
 echo "$DMG_PATH"

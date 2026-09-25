@@ -5,9 +5,10 @@ import CoreImage
 final class BezelRecorder: @unchecked Sendable {
     private let outputURL: URL
     private let renderer: BezelRenderer
-    private let profile: DeviceProfile
-    private let customFrame: CustomFrame?
+    private var configuration: PreviewConfiguration
+    private let outputSize: CGSize
 
+    private let configurationLock = NSLock()
     private let lock = NSLock()
     private var writer: AVAssetWriter?
     private var input: AVAssetWriterInput?
@@ -18,8 +19,15 @@ final class BezelRecorder: @unchecked Sendable {
     init(url: URL, renderer: BezelRenderer, profile: DeviceProfile, customFrame: CustomFrame?) {
         self.outputURL = url
         self.renderer = renderer
-        self.profile = profile
-        self.customFrame = customFrame
+        self.configuration = PreviewConfiguration(profile: profile, customFrame: customFrame)
+        self.outputSize = customFrame?.geometry.frameSize ?? profile.screenSize
+    }
+
+    /// Keep the movie canvas fixed while using the same selection as the preview.
+    func setConfiguration(profile: DeviceProfile, customFrame: CustomFrame?) {
+        configurationLock.lock()
+        configuration = PreviewConfiguration(profile: profile, customFrame: customFrame)
+        configurationLock.unlock()
     }
 
     func receive(buffer: CVPixelBuffer, presentationTime: CMTime) {
@@ -40,8 +48,11 @@ final class BezelRecorder: @unchecked Sendable {
 
         let currentSize = CGSize(width: CVPixelBufferGetWidth(buffer),
                                  height: CVPixelBufferGetHeight(buffer))
-        let currentProfile = profile.oriented(matching: currentSize)
-        let currentFrame = customFrame?.oriented(to: currentProfile)?.renderFrame
+        configurationLock.lock()
+        let configuration = self.configuration
+        configurationLock.unlock()
+        let currentProfile = configuration.profile.oriented(matching: currentSize)
+        let currentFrame = configuration.customFrame?.oriented(to: currentProfile)?.renderFrame
         renderer.composite(video: buffer, profile: currentProfile, customFrame: currentFrame, into: output)
         if !adaptor.append(output, withPresentationTime: presentationTime) {
             print("append failed: \(String(describing: writer?.error))")
@@ -70,7 +81,6 @@ final class BezelRecorder: @unchecked Sendable {
     }
 
     private func startWriting(time: CMTime) {
-        let outputSize = customFrame?.geometry.frameSize ?? profile.screenSize
         let outputWidth = Int(outputSize.width)
         let outputHeight = Int(outputSize.height)
 

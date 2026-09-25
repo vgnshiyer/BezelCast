@@ -18,6 +18,7 @@ final class PreviewCompositor: @unchecked Sendable {
     private let queue = DispatchQueue(label: "BezelCast.preview-compositor", qos: .userInteractive)
     private let lock = NSLock()
     private var configuration: PreviewConfiguration?
+    private var revision: UInt64 = 0
 
     init(renderer: BezelRenderer, frameStore: PreviewFrameStore) {
         self.renderer = renderer
@@ -27,6 +28,7 @@ final class PreviewCompositor: @unchecked Sendable {
     func setConfiguration(_ configuration: PreviewConfiguration?) {
         lock.lock()
         self.configuration = configuration
+        revision &+= 1
         lock.unlock()
     }
 
@@ -35,6 +37,7 @@ final class PreviewCompositor: @unchecked Sendable {
                  completion: @escaping @Sendable () -> Void) {
         lock.lock()
         let configuration = self.configuration
+        let revision = self.revision
         lock.unlock()
 
         guard let configuration else {
@@ -42,7 +45,7 @@ final class PreviewCompositor: @unchecked Sendable {
             return
         }
 
-        queue.async { [renderer, frameStore] in
+        queue.async { [self, renderer, frameStore] in
             let currentSize = CGSize(width: CVPixelBufferGetWidth(buffer),
                                      height: CVPixelBufferGetHeight(buffer))
             let currentProfile = configuration.profile.oriented(matching: currentSize)
@@ -51,9 +54,17 @@ final class PreviewCompositor: @unchecked Sendable {
                                               profile: currentProfile,
                                               customFrame: currentFrame)
             Task { @MainActor in
-                frameStore.display(image)
+                if self.isCurrent(revision) {
+                    frameStore.display(image)
+                }
                 completion()
             }
         }
+    }
+
+    private func isCurrent(_ revision: UInt64) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return self.revision == revision
     }
 }

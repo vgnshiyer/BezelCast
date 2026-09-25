@@ -95,7 +95,8 @@ struct CustomFrame: @unchecked Sendable {
         }
 
         context.translateBy(x: CGFloat(height) / 2, y: CGFloat(width) / 2)
-        context.rotate(by: clockwise ? .pi / 2 : -.pi / 2)
+        // CGContext uses y-up coordinates; a clockwise image rotation is negative.
+        context.rotate(by: clockwise ? -.pi / 2 : .pi / 2)
         context.draw(image,
                      in: CGRect(x: -CGFloat(width) / 2,
                                 y: -CGFloat(height) / 2,

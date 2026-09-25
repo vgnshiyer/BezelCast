@@ -31,10 +31,6 @@ enum DeviceDisplayLayout {
                                     customFrame: CustomFrame?) -> CGSize {
         guard let customFrame else { return profile.displaySize }
 
-        if profile.hasPresetFrameGeometry {
-            return customFrame.geometry.frameSize.scaled(by: 1 / profile.displayScale)
-        }
-
         let geometry = customFrame.geometry
         let screenRect = geometry.screenRect
         guard screenRect.width > 0, screenRect.height > 0 else {

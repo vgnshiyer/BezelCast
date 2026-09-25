@@ -94,7 +94,7 @@ private enum PreviewLayout {
 
 private struct FloatingControlBar: View {
     @ObservedObject var capture: DeviceCapture
-    @State private var showingProfilePicker = false
+    @State private var showingBezelPicker = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -117,7 +117,6 @@ private struct FloatingControlBar: View {
 
             HStack(spacing: 6) {
                 captureGroup
-                profilePicker
                 bezelButton
             }
         }
@@ -173,83 +172,32 @@ private struct FloatingControlBar: View {
             : String(format: "%d:%02d", m, s)
     }
 
-    /// Picker for the bezel profile. SwiftUI's Menu with .borderlessButton
-    /// menuStyle silently drops every label child after the first, so we
-    /// roll our own with Button + popover — that way the device glyph and
-    /// chevron both render reliably. Aspect-incompatible profiles are hidden
-    /// so the feed never lands in a badly stretched profile.
-    private var profilePicker: some View {
+    private var bezelButton: some View {
         Button {
-            showingProfilePicker.toggle()
+            showingBezelPicker.toggle()
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: capture.profile.family == .iPad ? "ipad" : "iphone")
-                    .font(.system(size: 18, weight: .regular))
+                Image(systemName: "rectangle.portrait.on.rectangle.portrait")
+                    .font(.system(size: 15, weight: .medium))
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .regular))
+                    .font(.system(size: 8, weight: .medium))
             }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 12)
+            .foregroundStyle(.white.opacity(0.9))
+            .padding(.horizontal, 10)
             .frame(height: 30)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .background(Capsule().fill(Color.white.opacity(0.08)))
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
-        .disabled(capture.session == nil)
-        .opacity(capture.session == nil ? 0.4 : 1.0)
-        .popover(isPresented: $showingProfilePicker, arrowEdge: .top) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(compatibleProfiles, id: \.id) { p in
-                    Button {
-                        capture.selectProfile(p)
-                        showingProfilePicker = false
-                    } label: {
-                        HStack {
-                            Text(p.displayName)
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            if p.id == capture.profile.id {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(.tint)
-                            }
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+        .help("Choose bezel and finish")
+        .accessibilityLabel("Choose bezel and finish")
+        .popover(isPresented: $showingBezelPicker, arrowEdge: .top) {
+            BezelPicker(capture: capture) {
+                showingBezelPicker = false
+                DispatchQueue.main.async { capture.uploadFrame() }
             }
-            .padding(.vertical, 6)
-            .frame(width: 240)
         }
-    }
-
-    private var compatibleProfiles: [DeviceProfile] {
-        let reference = capture.autoDetectedProfile ?? capture.profile
-        return DeviceProfile.compatible(with: reference)
-    }
-
-    private var bezelButton: some View {
-        Button {
-            if capture.customFrame == nil {
-                capture.uploadFrame()
-            } else {
-                capture.clearCustomFrame()
-            }
-        } label: {
-            Image(systemName: capture.customFrame == nil ? "rectangle.portrait.badge.plus" : "rectangle.portrait.slash")
-                .font(.system(size: capture.customFrame == nil ? 15 : 16, weight: .medium))
-                .foregroundStyle(capture.customFrame == nil ? .white.opacity(0.9) : .red)
-                .frame(width: 30, height: 30)
-        }
-        .buttonStyle(.plain)
-        .background(Capsule().fill(Color.white.opacity(0.08)))
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
-        .help(capture.customFrame == nil ? "Add Bezel" : "Remove Bezel")
-        .disabled(capture.session == nil)
-        .opacity(capture.session == nil ? 0.4 : 1.0)
     }
 
     private func iconButton(icon: String, action: @escaping () -> Void) -> some View {
