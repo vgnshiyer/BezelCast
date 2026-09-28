@@ -6,6 +6,10 @@ Mirror your iPhone or iPad screen on macOS.
 
 [Download the latest release for Apple Silicon Macs](https://github.com/vgnshiyer/BezelCast/releases/latest/download/BezelCast.dmg) · [Release notes](https://github.com/vgnshiyer/BezelCast/releases/latest)
 
+<p align="center">
+  <img src="Documentation/Images/bezelcast-demo.png" alt="BezelCast capture with an iPhone bezel and a colorful background" width="640">
+</p>
+
 ## Features
 
 - **USB iPhone and iPad mirroring** via the [`kCMIOHardwarePropertyAllowScreenCaptureDevices`](https://developer.apple.com/documentation/coremediaio) trick — same path QuickTime Player uses.
@@ -129,4 +133,4 @@ The License Agreement included in Apple's [iPhone 18 bezel download](https://dev
 
 ## License
 
-MIT. See `LICENSE`. The built-in code-drawn frames are original artwork covered by the same license. The repository contains no Apple-derived assets.
+MIT. See `LICENSE`. The built-in code-drawn frames are original artwork covered by the same license. The built-in bezel library does not bundle Apple Design Resources.
