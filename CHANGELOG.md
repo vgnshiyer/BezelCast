@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- Added capture backgrounds: colors, gradients, locally installed macOS wallpapers, and imported images, with landscape, portrait, and square canvases, padding, and optional shadows.
+- Applied backgrounds consistently to previews, PNG screenshots, and recordings. Backgrounds can change during recording while the movie's canvas stays fixed; choices and imported images are remembered.
+- Kept the preview window's size and position stable when switching bezels. Added proportional resizing by dragging phone or background canvas edges and corners.
+- Rounded background preview corners without changing the rectangular corners of exported screenshots and movies.
+- Excluded TopNotch-processed wallpapers with black strips from the wallpaper picker and fixed initial restoration of saved backgrounds.
+- Closed translucent screen-to-bezel edge seams in screenshots and recordings while preserving the captured screen's proportions and original status bar.
+- Added regression coverage for backgrounds, preview layout, resizing, screen preservation, and bezel-edge alignment in both orientations.
+
 ## 0.2.1
 
 - Fixed rejection of iPhone XR and iPhone 11 feeds at 828×1792, including landscape capture. Added their built-in bezels, released finishes, and 2× notch geometry.

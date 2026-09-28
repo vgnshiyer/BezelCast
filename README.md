@@ -13,6 +13,8 @@ Mirror your iPhone or iPad screen on macOS.
 - **Built-in bezel library** — switch instantly between original, code-drawn frames with only the finishes Apple released for each model, using Apple's finish names. Search by model or finish; no downloads needed.
 - **Automatic or no bezel** — start with a frame matching the detected screen, or export the screen alone. Your choice is remembered separately for iPhone and iPad.
 - **Optional custom PNGs** — import your own device frame with a transparent screen cutout.
+- **Capture backgrounds** — choose colors, gradients, installed macOS wallpapers, or your own image, with canvas, padding, and shadow controls.
+- **Resizable preview** — drag phone or canvas edges and corners; switching bezels keeps the window's size and position stable.
 - **Screenshot** → PNG.
 - **Recording** → HEVC-with-alpha `.mov` (Apple's native alpha-preserving codec).
 
@@ -30,6 +32,7 @@ Mirror your iPhone or iPad screen on macOS.
 | 📷 (camera)          | Save a screenshot — file picker, exports PNG.             |
 | ⏺ → 🟥 (record)      | Start / stop recording — file picker on stop, exports `.mov`. |
 | bezel + chevron      | Choose a model and finish, select Automatic or No Bezel, or import a custom PNG. |
+| background image    | Choose a background, canvas shape, padding, and shadow.   |
 
 The pill's two-line title shows your device's user-set name on top and the selected bezel, matched profile model, or recording timer underneath.
 
@@ -119,7 +122,7 @@ The License Agreement included in Apple's [iPhone 18 bezel download](https://dev
 ## Known limitations
 
 - **No audio.** HEVC-with-alpha + audio in the same `.mov` track is doable but not implemented. Recordings are silent.
-- **Recordings use a fixed canvas.** Rotation and bezel changes during recording fit inside the movie's starting canvas size, which can leave transparent margins. New screenshots and recordings use the current orientation and bezel dimensions.
+- **Recordings use a fixed canvas.** Rotation and bezel changes during recording fit inside the movie's starting canvas size, which can leave transparent margins. Screenshots taken during recording use that same canvas. Otherwise, a selected background determines the canvas size; with None, captures use the current orientation and bezel dimensions.
 - **Locked device shows the last frame.** When the device screen locks, iOS/iPadOS keeps emitting the last frame; the preview freezes there. Same as QuickTime Player.
 - **iPhone Mirroring (macOS Sequoia 15+)** must not be running on the same iPhone — Apple's iPhone screen capture is exclusive.
 - **iOS apps with screen-recording protection** (banking, Netflix, etc.) will black out their UI via the iOS `isCaptured` flag. There is no workaround.
