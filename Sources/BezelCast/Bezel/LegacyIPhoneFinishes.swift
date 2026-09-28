@@ -94,6 +94,15 @@ extension BezelFinishCatalog {
         result["iphone-12"] = iPhone12
         result["iphone-12-mini"] = iPhone12
 
+        result["iphone-11"] = BezelPalette(
+            finishes: [.black, .green, .yellow, .purple, .productRed, .white],
+            sources: ["https://support.apple.com/en-us/111865"]
+        )
+        result["iphone-xr"] = BezelPalette(
+            finishes: [.black, .white, .blue, .yellow, .coral, .productRed],
+            sources: ["https://support.apple.com/en-us/111868"]
+        )
+
         result["iphone-se"] = BezelPalette(
             finishes: [.midnight, .starlight, .productRed],
             sources: ["https://support.apple.com/en-us/111866"]

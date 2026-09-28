@@ -1,7 +1,7 @@
 import CoreGraphics
 
 enum BezelFinish: String, Sendable {
-    case black, white, silver, gold, graphite, blue, green, pink, purple, yellow
+    case black, white, silver, gold, graphite, blue, green, pink, purple, yellow, coral
     case burgundy, glacier, lavender, sage, teal, ultramarine, starlight, midnight
     case spaceBlack = "space-black"
     case spaceGray = "space-gray"
@@ -41,6 +41,7 @@ enum BezelFinish: String, Sendable {
         case .pink: return 0xD8A8B5
         case .purple: return 0xB2A7C2
         case .yellow: return 0xE6CD87
+        case .coral: return 0xEF7861
         case .burgundy: return 0x643840
         case .glacier: return 0xC0D0DB
         case .lavender: return 0xB8B2CD

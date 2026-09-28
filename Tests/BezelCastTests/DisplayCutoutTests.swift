@@ -7,7 +7,8 @@ import XCTest
 final class DisplayCutoutTests: XCTestCase {
     func testEveryCatalogModelHasItsReleasedDisplayCutout() throws {
         let groups: [(DisplayCutout, [String])] = [
-            (.wideNotch, ["iphone-12", "iphone-12-mini", "iphone-12-pro", "iphone-12-pro-max"]),
+            (.wideNotch, ["iphone-12", "iphone-12-mini", "iphone-12-pro", "iphone-12-pro-max",
+                          "iphone-11", "iphone-xr"]),
             (.notch, ["iphone-13", "iphone-13-mini", "iphone-13-pro", "iphone-13-pro-max",
                       "iphone-14", "iphone-14-plus", "iphone-16e", "iphone-17e"]),
             (.dynamicIsland, ["iphone-14-pro", "iphone-14-pro-max",
@@ -120,7 +121,8 @@ final class DisplayCutoutTests: XCTestCase {
     }
 
     func testLandscapeNotchesStayAttachedToTheRotatedRail() throws {
-        for (id, shoulder): (String, CGFloat) in [("iphone-12", 230), ("iphone-13", 185)] {
+        for (id, shoulder): (String, CGFloat) in [("iphone-12", 230), ("iphone-13", 185),
+                                                  ("iphone-xr", 150), ("iphone-11", 150)] {
             try autoreleasepool {
                 let selection = try option(id)
                 let profile = selection.profile.oriented(matching: CGSize(width: 3_000, height: 1_000))
@@ -144,6 +146,7 @@ final class DisplayCutoutTests: XCTestCase {
     func testScreenshotsCompositeNotchesAndIslandGapsOverVideo() throws {
         let renderer = BezelRenderer(ciContext: CIContext())
         for (id, shoulder): (String, CGFloat) in [("iphone-12", 230), ("iphone-13", 185),
+                                                  ("iphone-xr", 150), ("iphone-11", 150),
                                                   ("iphone-14-pro", 0), ("iphone-18-pro", 0)] {
             for landscape in [false, true] {
                 try autoreleasepool {
@@ -167,8 +170,12 @@ final class DisplayCutoutTests: XCTestCase {
                     } else {
                         XCTAssertGreaterThan(top.redComponent, 0.95, "\(id): video shows above island")
                     }
-                    XCTAssertLessThan(sample(offset: 0, depth: 70).redComponent, 0.05, id)
-                    XCTAssertGreaterThan(sample(offset: 0, depth: 150).redComponent, 0.95, id)
+                    // Sample in display points so 2× and 3× cutouts are tested
+                    // at the same position within and below the camera shape.
+                    XCTAssertLessThan(sample(offset: 0, depth: 23 * profile.displayScale).redComponent,
+                                      0.05, id)
+                    XCTAssertGreaterThan(sample(offset: 0, depth: 50 * profile.displayScale).redComponent,
+                                         0.95, id)
                 }
             }
         }
