@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 struct PreviewConfiguration: Sendable {
     let profile: DeviceProfile
     let customFrame: CustomFrame?
+    var presentation: CapturePresentation = .init()
 }
 
 @MainActor
@@ -26,6 +27,7 @@ final class DeviceCapture: ObservableObject {
     @Published private(set) var customFrameName: String?
     @Published private(set) var selectedBezelID = "automatic"
     let previewFrames = PreviewFrameStore()
+    let backgrounds: BackgroundStore
 
     var profile: DeviceProfile { previewConfiguration.profile }
     var customFrame: CustomFrame? { previewConfiguration.customFrame }
@@ -76,12 +78,20 @@ final class DeviceCapture: ObservableObject {
         return BezelRenderer(ciContext: CIContext(options: options))
     }()
     private var recorder: BezelRecorder?
+    private var recordingCanvasSize: CGSize?
     private lazy var previewCompositor = PreviewCompositor(renderer: renderer,
                                                            frameStore: previewFrames)
-    var willApplyPreviewConfiguration: ((PreviewConfiguration) -> Void)?
 
     init(preferences: UserDefaults = .standard, startCapture: Bool = true) {
         self.preferences = preferences
+        self.backgrounds = BackgroundStore(preferences: preferences)
+        backgrounds.didChange = { [weak self] in
+            guard let self else { return }
+            self.applyPreview(profile: self.profile, customFrame: self.customFrame)
+        }
+        // Apply saved background preferences before asynchronous bezel loading
+        // so the first frame already uses the user's presentation settings.
+        applyPreview(profile: profile, customFrame: nil)
         restoreBezel(for: profile)
         guard startCapture else { return }
         enableiOSScreenCaptureDevices()
@@ -209,8 +219,10 @@ final class DeviceCapture: ObservableObject {
     }
 
     private func applyPreview(profile: DeviceProfile, customFrame: CustomFrame?) {
-        let configuration = PreviewConfiguration(profile: profile, customFrame: customFrame)
-        willApplyPreviewConfiguration?(configuration)
+        var presentation = backgrounds.presentation
+        presentation.fixedCanvasSize = recordingCanvasSize
+        let configuration = PreviewConfiguration(profile: profile, customFrame: customFrame,
+                                                 presentation: presentation)
         previewCompositor.setConfiguration(configuration)
         let compositor = previewCompositor
         frameTap.setPreviewSink { buffer, pts, completion in
@@ -220,7 +232,7 @@ final class DeviceCapture: ObservableObject {
         }
         // Keep the last image visible until the next composited frame arrives.
         // Switching frames must not blank the live preview or restart capture.
-        recorder?.setConfiguration(profile: profile, customFrame: customFrame)
+        recorder?.setConfiguration(profile: profile, customFrame: customFrame, presentation: presentation)
         previewConfiguration = configuration
     }
 
@@ -453,6 +465,7 @@ final class DeviceCapture: ObservableObject {
         let renderer = self.renderer
         let profile = self.profile
         let customFrame = self.customFrame
+        let presentation = previewConfiguration.presentation
 
         frameTap.setOnNextFrame { [weak self] buffer in
             Task { @MainActor in
@@ -465,7 +478,8 @@ final class DeviceCapture: ObservableObject {
                 let currentFrame = customFrame?.oriented(to: currentProfile)?.renderFrame
                 let image = renderer.screenshot(from: buffer,
                                                 profile: currentProfile,
-                                                customFrame: currentFrame)
+                                                customFrame: currentFrame,
+                                                presentation: presentation)
                 guard let image else { return }
                 await MainActor.run {
                     writePNGImage(image, to: url)
@@ -486,8 +500,12 @@ final class DeviceCapture: ObservableObject {
         guard recorder == nil, session != nil else { return }
         let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("BezelCast-\(UUID().uuidString).mov")
-        let recorder = BezelRecorder(url: tempURL, renderer: renderer, profile: profile, customFrame: customFrame)
+        let presentation = previewConfiguration.presentation
+        recordingCanvasSize = presentation.outputSize(for: customFrame?.geometry.frameSize ?? profile.screenSize)
+        let recorder = BezelRecorder(url: tempURL, renderer: renderer, profile: profile,
+                                     customFrame: customFrame, presentation: presentation)
         self.recorder = recorder
+        applyPreview(profile: profile, customFrame: customFrame)
         frameTap.setRecorder(recorder)
         startVideoOutput()
         recordingStartTime = Date()
@@ -500,6 +518,8 @@ final class DeviceCapture: ObservableObject {
         recordingStartTime = nil
         frameTap.setRecorder(nil)
         self.recorder = nil
+        recordingCanvasSize = nil
+        applyPreview(profile: profile, customFrame: customFrame)
         cancelPendingFrameRequest()
 
         recorder.stop { [weak self] tempURL in
@@ -515,6 +535,8 @@ final class DeviceCapture: ObservableObject {
         recordingStartTime = nil
         frameTap.setRecorder(nil)
         self.recorder = nil
+        recordingCanvasSize = nil
+        applyPreview(profile: profile, customFrame: customFrame)
         recorder.stop { tempURL in
             if let tempURL { try? FileManager.default.removeItem(at: tempURL) }
         }

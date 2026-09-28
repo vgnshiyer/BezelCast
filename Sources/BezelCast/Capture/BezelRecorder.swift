@@ -16,17 +16,19 @@ final class BezelRecorder: @unchecked Sendable {
     private var started = false
     private var stopped = false
 
-    init(url: URL, renderer: BezelRenderer, profile: DeviceProfile, customFrame: CustomFrame?) {
+    init(url: URL, renderer: BezelRenderer, profile: DeviceProfile, customFrame: CustomFrame?,
+         presentation: CapturePresentation = .init()) {
         self.outputURL = url
         self.renderer = renderer
-        self.configuration = PreviewConfiguration(profile: profile, customFrame: customFrame)
-        self.outputSize = customFrame?.geometry.frameSize ?? profile.screenSize
+        self.configuration = PreviewConfiguration(profile: profile, customFrame: customFrame, presentation: presentation)
+        self.outputSize = presentation.outputSize(for: customFrame?.geometry.frameSize ?? profile.screenSize)
     }
 
     /// Keep the movie canvas fixed while using the same selection as the preview.
-    func setConfiguration(profile: DeviceProfile, customFrame: CustomFrame?) {
+    func setConfiguration(profile: DeviceProfile, customFrame: CustomFrame?,
+                          presentation: CapturePresentation = .init()) {
         configurationLock.lock()
-        configuration = PreviewConfiguration(profile: profile, customFrame: customFrame)
+        configuration = PreviewConfiguration(profile: profile, customFrame: customFrame, presentation: presentation)
         configurationLock.unlock()
     }
 
@@ -53,7 +55,8 @@ final class BezelRecorder: @unchecked Sendable {
         configurationLock.unlock()
         let currentProfile = configuration.profile.oriented(matching: currentSize)
         let currentFrame = configuration.customFrame?.oriented(to: currentProfile)?.renderFrame
-        renderer.composite(video: buffer, profile: currentProfile, customFrame: currentFrame, into: output)
+        renderer.composite(video: buffer, profile: currentProfile, customFrame: currentFrame,
+                           presentation: configuration.presentation, into: output)
         if !adaptor.append(output, withPresentationTime: presentationTime) {
             print("append failed: \(String(describing: writer?.error))")
         }

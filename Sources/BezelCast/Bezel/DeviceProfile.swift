@@ -12,8 +12,7 @@ struct DeviceProfile: Equatable, Sendable {
 
     /// Native screen pixel resolution. Used for matching against the captured feed.
     let screenSize: CGSize
-    /// Native scale factor. Preview/window layout uses display points so iPads
-    /// look physically larger than iPhones instead of merely pixel-similar.
+    /// Native scale factor used to draw camera cutouts in screen pixels.
     let displayScale: CGFloat
     /// Legacy preset bezel canvas dimensions. Profiles without a verified
     /// preset use `screenSize`; custom frames detect their canvas from the PNG.
@@ -33,10 +32,6 @@ struct DeviceProfile: Equatable, Sendable {
         min(screenSize.width, screenSize.height) / max(screenSize.width, screenSize.height)
     }
     var isLandscape: Bool { screenSize.width > screenSize.height }
-    var displaySize: CGSize {
-        CGSize(width: screenSize.width / displayScale,
-               height: screenSize.height / displayScale)
-    }
     var hasPresetFrameGeometry: Bool { family == .iPhone && frameSize != screenSize }
     var defaultFrameGeometry: FrameGeometry {
         FrameGeometry(frameSize: frameSize,
@@ -61,15 +56,6 @@ struct DeviceProfile: Equatable, Sendable {
 
             return profile.withOrientation(landscape: landscape)
         }
-    }
-
-    static func largestDisplaySize(for family: DeviceFamily, matching orientation: CGSize) -> CGSize {
-        let landscape = orientation.width > orientation.height
-        let profiles = catalog.filter { $0.family == family }
-        let sizes = profiles.map { oriented($0.displaySize, landscape: landscape) }
-        let w = sizes.map(\.width).max() ?? 0
-        let h = sizes.map(\.height).max() ?? 0
-        return CGSize(width: w, height: h)
     }
 }
 

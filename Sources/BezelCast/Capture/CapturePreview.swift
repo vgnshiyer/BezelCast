@@ -5,19 +5,23 @@ struct LayeredCapturePreview: NSViewRepresentable {
     let profile: DeviceProfile
     let customFrame: CustomFrame?
     let previewFrames: PreviewFrameStore
+    var hasCanvas = false
+    var canvasCornerRadius: CGFloat = 0
 
     func makeNSView(context: Context) -> LayeredPreviewView {
         let view = LayeredPreviewView()
         view.configure(profile: profile,
                        customFrame: customFrame,
-                       previewFrames: previewFrames)
+                       previewFrames: previewFrames, hasCanvas: hasCanvas,
+                       canvasCornerRadius: canvasCornerRadius)
         return view
     }
 
     func updateNSView(_ nsView: LayeredPreviewView, context: Context) {
         nsView.configure(profile: profile,
                          customFrame: customFrame,
-                         previewFrames: previewFrames)
+                         previewFrames: previewFrames, hasCanvas: hasCanvas,
+                         canvasCornerRadius: canvasCornerRadius)
     }
 
     static func dismantleNSView(_ nsView: LayeredPreviewView, coordinator: ()) {
@@ -39,7 +43,9 @@ final class LayeredPreviewView: NSView {
         let rootLayer = CALayer()
         let disabledActions = ["bounds": NSNull(),
                                "position": NSNull(),
-                               "contents": NSNull()]
+                               "contents": NSNull(),
+                               "cornerRadius": NSNull(),
+                               "masksToBounds": NSNull()]
         rootLayer.actions = disabledActions
         rootLayer.backgroundColor = NSColor.clear.cgColor
         rootLayer.masksToBounds = false
@@ -50,6 +56,7 @@ final class LayeredPreviewView: NSView {
         layer = rootLayer
 
         compositedLayer.contentsGravity = .resizeAspect
+        compositedLayer.cornerCurve = .continuous
         compositedLayer.masksToBounds = false
         compositedLayer.isOpaque = false
         compositedLayer.isHidden = true
@@ -62,7 +69,9 @@ final class LayeredPreviewView: NSView {
 
     func configure(profile: DeviceProfile,
                    customFrame: CustomFrame?,
-                   previewFrames: PreviewFrameStore) {
+                   previewFrames: PreviewFrameStore,
+                   hasCanvas: Bool = false,
+                   canvasCornerRadius: CGFloat = 0) {
         if self.previewFrames !== previewFrames {
             self.previewFrames?.imageHandler = nil
             self.previewFrames = previewFrames
@@ -73,6 +82,12 @@ final class LayeredPreviewView: NSView {
 
         self.profile = profile
         hasCustomFrame = customFrame != nil
+        // A composited background already includes the device's shadow.
+        layer?.shadowOpacity = hasCanvas ? 0 : 0.25
+        // Clip only the displayed layer, leaving exported pixels and the
+        // separate edge-resize overlay untouched.
+        compositedLayer.cornerRadius = canvasCornerRadius
+        compositedLayer.masksToBounds = canvasCornerRadius > 0
         compositedLayer.isHidden = compositedLayer.contents == nil
 
         updateBackingScale()

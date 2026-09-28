@@ -50,6 +50,83 @@ final class BezelRecorderTests: XCTestCase {
         }
     }
 
+    func testBackgroundChangesReachMovieWithFixedCanvasAndTransparentNone() async throws {
+        try requireAlphaEncoder()
+        let profile = DeviceProfile(id: "background-recorder", displayName: "Test", family: .iPhone,
+                                    screenSize: CGSize(width: 180, height: 320), displayScale: 1,
+                                    frameSize: CGSize(width: 180, height: 320), screenOffset: .zero,
+                                    screenCornerRadius: 0, displayCutout: .none)
+        let backgrounds: [CaptureBackground] = [
+            CaptureBackground(id: "red", name: "Red", content: .solid(BackgroundColor(red: 1, green: 0, blue: 0))),
+            CaptureBackground(id: "green", name: "Green", content: .solid(BackgroundColor(red: 0, green: 1, blue: 0))),
+            .none,
+        ]
+        let outputSize = CGSize(width: 320, height: 180)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BackgroundRecordingTests-\(UUID().uuidString).mov")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let recorder = BezelRecorder(url: url, renderer: BezelRenderer(ciContext: CIContext()),
+                                      profile: profile, customFrame: nil,
+                                      presentation: CapturePresentation(background: backgrounds[0], shadow: false,
+                                                                        fixedCanvasSize: outputSize))
+        let buffer = try blueBuffer(size: profile.screenSize)
+        for phase in backgrounds.indices {
+            recorder.setConfiguration(profile: profile, customFrame: nil,
+                                      presentation: CapturePresentation(background: backgrounds[phase],
+                                                                        canvas: .portrait, shadow: false))
+            for index in 0..<10 {
+                recorder.receive(buffer: buffer,
+                                 presentationTime: CMTime(value: Int64(phase * 30 + index), timescale: 30))
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+        }
+        let finished = expectation(description: "Background movie finishes encoding")
+        let result = RecordingResult()
+        recorder.stop { output in
+            result.store(output)
+            finished.fulfill()
+        }
+        await fulfillment(of: [finished], timeout: 10)
+        let asset = AVURLAsset(url: try XCTUnwrap(result.read()))
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: try XCTUnwrap(tracks.first),
+                                              outputSettings: [kCVPixelBufferPixelFormatTypeKey as String:
+                                                               kCVPixelFormatType_32BGRA])
+        reader.add(output)
+        XCTAssertTrue(reader.startReading())
+        var samplesPerPhase = [0, 0, 0]
+        while let sample = output.copyNextSampleBuffer() {
+            let phase = Int(CMSampleBufferGetPresentationTimeStamp(sample).seconds)
+            XCTAssertTrue(backgrounds.indices.contains(phase))
+            guard backgrounds.indices.contains(phase) else { continue }
+            samplesPerPhase[phase] += 1
+            let decoded = try XCTUnwrap(CMSampleBufferGetImageBuffer(sample))
+            XCTAssertEqual(CVPixelBufferGetWidth(decoded), 320)
+            XCTAssertEqual(CVPixelBufferGetHeight(decoded), 180)
+            CVPixelBufferLockBaseAddress(decoded, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(decoded, .readOnly) }
+            let bytes = try XCTUnwrap(CVPixelBufferGetBaseAddress(decoded)).assumingMemoryBound(to: UInt8.self)
+            let row = 90 * CVPixelBufferGetBytesPerRow(decoded)
+            let corner = row + 4 * 4
+            let center = row + 160 * 4
+            XCTAssertGreaterThan(bytes[center], 220, "The screen remains blue in every phase")
+            if phase == 0 {
+                XCTAssertGreaterThan(bytes[corner + 2], 220)
+                XCTAssertLessThan(bytes[corner + 1], 35)
+                XCTAssertGreaterThan(bytes[corner + 3], 240)
+            } else if phase == 1 {
+                XCTAssertGreaterThan(bytes[corner + 1], 220)
+                XCTAssertLessThan(bytes[corner + 2], 35)
+                XCTAssertGreaterThan(bytes[corner + 3], 240)
+            } else {
+                XCTAssertLessThan(bytes[corner + 3], 20, "None restores transparency without resizing the movie")
+            }
+        }
+        XCTAssertEqual(reader.status, .completed, "\(String(describing: reader.error))")
+        XCTAssertTrue(samplesPerPhase.allSatisfy { $0 > 0 }, "Every background needs decoded evidence: \(samplesPerPhase)")
+    }
+
     private func requireAlphaEncoder() throws {
         var session: VTCompressionSession?
         let status = VTCompressionSessionCreate(allocator: kCFAllocatorDefault, width: 180, height: 320,

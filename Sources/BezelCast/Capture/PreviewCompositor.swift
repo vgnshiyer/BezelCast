@@ -52,7 +52,8 @@ final class PreviewCompositor: @unchecked Sendable {
             let currentFrame = configuration.customFrame?.oriented(to: currentProfile)?.renderFrame
             let image = renderer.previewImage(from: buffer,
                                               profile: currentProfile,
-                                              customFrame: currentFrame)
+                                              customFrame: currentFrame,
+                                              presentation: configuration.presentation)
             Task { @MainActor in
                 if self.isCurrent(revision) {
                     frameStore.display(image)

@@ -22,6 +22,11 @@ struct ContentView: View {
                     .padding(.bottom, PreviewLayout.sidePadding)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
+            .overlay(alignment: .bottom) {
+                BackgroundErrorBanner(store: capture.backgrounds)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color.clear)
             .transaction { transaction in
@@ -47,7 +52,8 @@ struct ContentView: View {
             let configuration = capture.previewConfiguration
             BezelView(profile: configuration.profile,
                       customFrame: configuration.customFrame,
-                      previewFrames: capture.previewFrames)
+                      previewFrames: capture.previewFrames,
+                      presentation: configuration.presentation)
         } else {
             VStack(spacing: 14) {
                 Image(systemName: "iphone")
@@ -65,22 +71,7 @@ struct ContentView: View {
 
     private func toolbarWidth(in containerSize: CGSize) -> CGFloat {
         let availableWidth = max(0, containerSize.width - PreviewLayout.sidePadding * 2)
-        guard capture.session != nil else { return availableWidth }
-
-        let configuration = capture.previewConfiguration
-        let previewSize = DeviceDisplayLayout.previewSize(for: configuration.profile,
-                                                          customFrame: configuration.customFrame)
-        let availableHeight = max(0,
-                                  containerSize.height
-                                      - PreviewLayout.toolbarTop
-                                      - PreviewLayout.toolbarHeight
-                                      - PreviewLayout.toolbarGap
-                                      - PreviewLayout.sidePadding)
-        let fit = min(1,
-                      availableWidth / previewSize.width,
-                      availableHeight / previewSize.height)
-        let displayWidth = previewSize.width * fit
-        return min(availableWidth, max(PreviewLayout.minimumToolbarWidth, displayWidth))
+        return min(availableWidth, PreviewLayout.preferredToolbarWidth)
     }
 }
 
@@ -89,12 +80,13 @@ private enum PreviewLayout {
     static let toolbarHeight: CGFloat = 52
     static let toolbarGap: CGFloat = 16
     static let sidePadding: CGFloat = 16
-    static let minimumToolbarWidth: CGFloat = 360
+    static let preferredToolbarWidth: CGFloat = 420
 }
 
 private struct FloatingControlBar: View {
     @ObservedObject var capture: DeviceCapture
     @State private var showingBezelPicker = false
+    @State private var showingBackgroundPicker = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -118,6 +110,7 @@ private struct FloatingControlBar: View {
             HStack(spacing: 6) {
                 captureGroup
                 bezelButton
+                backgroundButton
             }
         }
         .padding(.horizontal, 10)
@@ -200,6 +193,30 @@ private struct FloatingControlBar: View {
         }
     }
 
+    private var backgroundButton: some View {
+        Button {
+            showingBackgroundPicker.toggle()
+        } label: {
+            Image(systemName: "photo.on.rectangle")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.white.opacity(0.9))
+                .frame(width: 36, height: 30)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .background(Capsule().fill(Color.white.opacity(0.08)))
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
+        .help("Choose background")
+        .accessibilityLabel("Choose background")
+        .popover(isPresented: $showingBackgroundPicker, arrowEdge: .top) {
+            BackgroundPicker(store: capture.backgrounds, isRecording: capture.isRecording,
+                             recordingSize: capture.previewConfiguration.presentation.fixedCanvasSize) {
+                showingBackgroundPicker = false
+                DispatchQueue.main.async { capture.backgrounds.importImage() }
+            }
+        }
+    }
+
     private func iconButton(icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
@@ -228,5 +245,24 @@ private struct FloatingControlBar: View {
         .buttonStyle(.plain)
         .disabled(capture.session == nil)
         .opacity(capture.session == nil ? 0.4 : 1.0)
+    }
+}
+
+private struct BackgroundErrorBanner: View {
+    @ObservedObject var store: BackgroundStore
+
+    var body: some View {
+        if let error = store.error {
+            HStack(spacing: 8) {
+                Text(error).font(.system(size: 12))
+                Button(action: store.dismissError) { Image(systemName: "xmark") }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss background error")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .foregroundStyle(.white)
+            .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+        }
     }
 }

@@ -67,7 +67,21 @@ swift test
 
 The built-in library uses original CoreGraphics artwork. Available finishes and their names match Apple's released models, including colors added after launch. The rendered shades approximate physical materials and are not official Apple artwork. Apple source links are stored alongside each palette; see the [complete model and finish reference](Documentation/DeviceFinishes.md).
 
-Camera cutouts follow the selected model: the wider iPhone XR/11/12 notch, the smaller notch on iPhone 13/14 (excluding 14 Pro) and 16e/17e, or the appropriate Dynamic Island. iPhone SE and iPads have no display cutout. These original shapes use approximate dimensions; see the [model and cutout reference](Documentation/DeviceCutouts.md). Changing a bezel preserves the connected device's captured content, including any live activities it sends.
+Camera cutouts follow the selected model: the wider iPhone XR/11/12 notch, the smaller notch on iPhone 13/14 (excluding 14 Pro) and 16e/17e, or the appropriate Dynamic Island. iPhone SE and iPads have no display cutout. These original shapes use approximate dimensions; see the [model and cutout reference](Documentation/DeviceCutouts.md).
+
+Switching devices or bezels keeps the preview window's size and position unchanged. Drag any edge or corner of the visible phone to resize the preview with its proportions preserved. With a background selected, you can also drag the canvas edges. Drag the interior to move the window. Preview sizing does not change screenshot resolution or a recording's output canvas.
+
+The status bar stays exactly as captured from the connected device. BezelCast does not repaint the wallpaper or replace its clock, signal, Wi-Fi, or battery icons. Selecting a different bezel changes the frame and camera cutout; it does not rearrange the phone's screen content.
+
+## Backgrounds
+
+Click the **background image icon** beside the bezel picker to choose a color, gradient, installed macOS wallpaper, or your own image. **None** keeps the original transparent capture. Wallpaper availability depends on the images downloaded on your Mac; use the refresh button after downloading a wallpaper in System Settings. BezelCast reads local wallpaper files and does not bundle Apple's wallpaper artwork. TopNotch's modified desktop copies are excluded from the wallpaper picker because they contain a black strip; choose the original installed wallpaper instead.
+
+With a background selected, choose a **Landscape** (1920 × 1080), **Portrait** (1080 × 1920), or **Square** (1440 × 1440) canvas. Adjust padding and toggle the device shadow. Images fill the canvas with a centered crop, and the device keeps its proportions. The preview canvas has subtly rounded corners; PNG screenshots and recordings keep rectangular corners. The preview, PNG screenshots, and recordings share the same layout; the toolbar is never included.
+
+Backgrounds can change during recording with a short crossfade. The recording's canvas stays fixed until you stop, including when switching back to None or rotating the device. Choose the canvas before recording. Background choices and layout settings are remembered; imported images are copied to `~/Library/Application Support/BezelCast/Backgrounds` so they remain available if the originals move.
+
+## Custom bezels
 
 For your own artwork, choose **Import custom PNG…** in the bezel picker. The PNG must have a transparent screen cutout and match the selected profile's geometry; an invalid file shows an error banner. You can switch away from your imported frame and select **Custom PNG** to return to it during the same app launch. Imported files are not restored after quitting; the last built-in, Automatic, or No Bezel preference is retained.
 
