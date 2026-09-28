@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1
 
 - Fixed rejection of iPhone XR and iPhone 11 feeds at 828×1792, including landscape capture. Added their built-in bezels, released finishes, and 2× notch geometry.
 

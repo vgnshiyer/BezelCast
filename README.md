@@ -67,7 +67,7 @@ swift test
 
 The built-in library uses original CoreGraphics artwork. Available finishes and their names match Apple's released models, including colors added after launch. The rendered shades approximate physical materials and are not official Apple artwork. Apple source links are stored alongside each palette; see the [complete model and finish reference](Documentation/DeviceFinishes.md).
 
-Camera cutouts follow the selected model: the wider iPhone 12 notch, the smaller notch on iPhone 13/14 (excluding 14 Pro) and 16e/17e, or the appropriate Dynamic Island. iPhone SE and iPads have no display cutout. These original shapes use approximate dimensions; see the [model and cutout reference](Documentation/DeviceCutouts.md). Changing a bezel preserves the connected device's captured content, including any live activities it sends.
+Camera cutouts follow the selected model: the wider iPhone XR/11/12 notch, the smaller notch on iPhone 13/14 (excluding 14 Pro) and 16e/17e, or the appropriate Dynamic Island. iPhone SE and iPads have no display cutout. These original shapes use approximate dimensions; see the [model and cutout reference](Documentation/DeviceCutouts.md). Changing a bezel preserves the connected device's captured content, including any live activities it sends.
 
 For your own artwork, choose **Import custom PNG…** in the bezel picker. The PNG must have a transparent screen cutout and match the selected profile's geometry; an invalid file shows an error banner. You can switch away from your imported frame and select **Custom PNG** to return to it during the same app launch. Imported files are not restored after quitting; the last built-in, Automatic, or No Bezel preference is retained.
 
@@ -86,6 +86,7 @@ The License Agreement included in Apple's [iPhone 18 bezel download](https://dev
 | iPhone | iPhone 14 Pro Max, iPhone 14 Pro, iPhone 14 Plus, iPhone 14 |
 | iPhone | iPhone 13 Pro Max, iPhone 13 Pro, iPhone 13, iPhone 13 mini |
 | iPhone | iPhone 12 Pro Max, iPhone 12 Pro, iPhone 12, iPhone 12 mini |
+| iPhone | iPhone 11, iPhone XR |
 | iPhone | iPhone SE (3rd gen) |
 | iPad | iPad Pro 13-inch (M4/M5) |
 | iPad | iPad Pro 12.9-inch (2018-2022) |
