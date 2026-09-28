@@ -3,7 +3,7 @@ import XCTest
 @testable import BezelCast
 
 final class ReleasedFinishTests: XCTestCase {
-    func testRecentIPhonesOfferExactlyTheirReleasedFinishes() throws {
+    func testIPhonesOfferExactlyTheirReleasedFinishes() throws {
         // Independently verified against Apple's technical specifications.
         // Keep Pro/Max and standard/Plus assertions separate so a missing
         // per-model assignment cannot silently borrow another model's palette.
@@ -19,7 +19,9 @@ final class ReleasedFinishTests: XCTestCase {
             "iphone-16-pro": [.blackTitanium, .whiteTitanium, .naturalTitanium, .desertTitanium],
             "iphone-16-plus": [.black, .white, .pink, .teal, .ultramarine],
             "iphone-16": [.black, .white, .pink, .teal, .ultramarine],
-            "iphone-16e": [.black, .white]
+            "iphone-16e": [.black, .white],
+            "iphone-11": [.black, .green, .yellow, .purple, .productRed, .white],
+            "iphone-xr": [.black, .white, .blue, .yellow, .coral, .productRed]
         ]
 
         for (profileID, finishes) in expected {

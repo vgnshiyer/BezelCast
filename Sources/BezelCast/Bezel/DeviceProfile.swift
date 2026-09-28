@@ -130,6 +130,17 @@ extension DeviceProfile {
         standardNotched(id: "iphone-12",       name: "iPhone 12", cutout: .wideNotch),
         mini(id: "iphone-12-mini",             name: "iPhone 12 mini", cutout: .wideNotch),
 
+        // XR and 11 share a 2× display. Keep 11 first as the resolution default;
+        // users can select XR explicitly because resolution cannot tell them apart.
+        // https://support.apple.com/en-us/111865 and /111868
+        // CoreSimulator reports a 41.5-point corner radius for both: 83 pixels.
+        iPhone(id: "iphone-11", name: "iPhone 11",
+               screenSize: CGSize(width: 828, height: 1792), displayScale: 2,
+               cornerRadius: 83, cutout: .wideNotch),
+        iPhone(id: "iphone-xr", name: "iPhone XR",
+               screenSize: CGSize(width: 828, height: 1792), displayScale: 2,
+               cornerRadius: 83, cutout: .wideNotch),
+
         // 750×1334 — iPhone SE (3rd gen) — home button, no rounded screen
         DeviceProfile(
             id: "iphone-se",
@@ -199,12 +210,13 @@ extension DeviceProfile {
     private static func iPhone(id: String,
                                name: String,
                                screenSize: CGSize,
+                               displayScale: CGFloat = 3,
                                cornerRadius: CGFloat,
                                cutout: DisplayCutout) -> DeviceProfile {
         DeviceProfile(
             id: id, displayName: name, family: .iPhone,
             screenSize: screenSize,
-            displayScale: 3,
+            displayScale: displayScale,
             frameSize: screenSize,
             screenOffset: .zero,
             screenCornerRadius: cornerRadius,

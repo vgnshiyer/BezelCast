@@ -12,6 +12,55 @@ final class BezelSelectionTests: XCTestCase {
         }
     }
 
+    func testXRAnd11CaptureLoadsAutomaticBezelAndSupportsNoBezel() async throws {
+        try await withCapture { capture, _ in
+            let portrait = CGSize(width: 828, height: 1792)
+            let landscape = CGSize(width: 1792, height: 828)
+            for size in [portrait, landscape] {
+                capture.handleFrameSize(size)
+                XCTAssertEqual(capture.autoDetectedProfile?.id, "iphone-11")
+                try await waitUntil {
+                    capture.profile.id == "iphone-11"
+                        && capture.customFrame?.geometry.screenRect.size == size
+                }
+                XCTAssertEqual(capture.profile.screenSize, size)
+                XCTAssertEqual(capture.selectedBezelID, "automatic")
+                XCTAssertEqual(capture.customFrameName, "iPhone 11 · Black")
+                XCTAssertNil(capture.customFrameError)
+            }
+
+            capture.selectBezel("none")
+            capture.handleFrameSize(portrait)
+            XCTAssertEqual(capture.profile.screenSize, portrait)
+            XCTAssertEqual(capture.autoDetectedProfile?.screenSize, portrait)
+            XCTAssertEqual(capture.selectedBezelID, "none")
+            XCTAssertNil(capture.customFrame)
+            XCTAssertNil(capture.customFrameName)
+        }
+    }
+
+    func testExplicitXRBezelSurvivesRotationOfSharedResolutionFeed() async throws {
+        try await withCapture { capture, _ in
+            let portrait = CGSize(width: 828, height: 1792)
+            let landscape = CGSize(width: 1792, height: 828)
+            capture.handleFrameSize(portrait)
+            capture.selectBezel("iphone-xr/coral")
+
+            for size in [portrait, landscape, portrait] {
+                capture.handleFrameSize(size)
+                try await waitUntil {
+                    capture.customFrameName == "iPhone XR · Coral"
+                        && capture.customFrame?.geometry.screenRect.size == size
+                }
+                XCTAssertEqual(capture.autoDetectedProfile?.id, "iphone-11")
+                XCTAssertEqual(capture.profile.id, "iphone-xr")
+                XCTAssertEqual(capture.profile.screenSize, size)
+                XCTAssertEqual(capture.selectedBezelID, "iphone-xr/coral")
+                XCTAssertNil(capture.customFrameError)
+            }
+        }
+    }
+
     func testLatestChoiceWinsDuringRapidSwitchesAndRotation() async throws {
         try await withCapture { capture, _ in
             capture.handleFrameSize(CGSize(width: 1320, height: 2868))

@@ -22,7 +22,7 @@ final class BezelLibraryTests: XCTestCase {
     }
 
     func testGeneratedFramesHaveTransparentScreensAndOpaqueSurrounds() throws {
-        for id in ["iphone-18-pro", "iphone-17e", "iphone-se", "ipad-pro-13"] {
+        for id in ["iphone-18-pro", "iphone-17e", "iphone-se", "iphone-xr", "iphone-11", "ipad-pro-13"] {
             try autoreleasepool {
                 let selection = try option(id)
                 let frame = try XCTUnwrap(BezelLibrary.frame(for: selection, orientedTo: selection.profile))

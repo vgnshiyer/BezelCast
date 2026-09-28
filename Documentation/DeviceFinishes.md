@@ -2,6 +2,8 @@
 
 Checked against Apple's technical specifications on September 25, 2026. The picker uses these finish names and combinations, including colors added after a model's launch. The first listed finish is BezelCast's default for that model; Apple does not prescribe a default.
 
+iPhone XR and iPhone 11 entries were added and checked on September 28, 2026.
+
 These are original rendered frames. Their material shades approximate the released finishes; the RGB values are not official Apple color specifications. Screen resolution alone cannot identify models that share a display size, so select the model explicitly when needed.
 
 | Model | Released finishes | Apple sources |
@@ -34,6 +36,8 @@ These are original rendered frames. Their material shades approximate the releas
 | iPhone 12 Pro | Graphite, Silver, Gold, Pacific Blue | [Apple 1](https://support.apple.com/en-us/111875), [Apple 2](https://support.apple.com/en-us/111874) |
 | iPhone 12 | Black, White, (PRODUCT)RED, Green, Blue, Purple | [Apple 1](https://support.apple.com/en-us/111876), [Apple 2](https://support.apple.com/en-us/111877) |
 | iPhone 12 mini | Black, White, (PRODUCT)RED, Green, Blue, Purple | [Apple 1](https://support.apple.com/en-us/111876), [Apple 2](https://support.apple.com/en-us/111877) |
+| iPhone 11 | Black, Green, Yellow, Purple, (PRODUCT)RED, White | [Apple 1](https://support.apple.com/en-us/111865) |
+| iPhone XR | Black, White, Blue, Yellow, Coral, (PRODUCT)RED | [Apple 1](https://support.apple.com/en-us/111868) |
 | iPhone SE | Midnight, Starlight, (PRODUCT)RED | [Apple 1](https://support.apple.com/en-us/111866) |
 | iPad Pro 13-inch (M4/M5) | Space Black, Silver | [Apple 1](https://support.apple.com/en-us/119891), [Apple 2](https://support.apple.com/en-us/125407) |
 | iPad Pro 12.9-inch (2018-2022) | Space Gray, Silver | [Apple 1](https://support.apple.com/en-us/111979), [Apple 2](https://support.apple.com/en-us/111977), [Apple 3](https://support.apple.com/en-us/111896), [Apple 4](https://support.apple.com/en-us/111841) |

@@ -6,7 +6,7 @@ Built-in bezels use the display cutout type of the selected model. Their shapes 
 
 | Display cutout | Models in the catalog |
 | --- | --- |
-| Wider notch attached to the top edge | iPhone 12, iPhone 12 mini, iPhone 12 Pro, iPhone 12 Pro Max |
+| Wider notch attached to the top edge | iPhone XR, iPhone 11; iPhone 12, iPhone 12 mini, iPhone 12 Pro, iPhone 12 Pro Max |
 | Smaller notch attached to the top edge | iPhone 13, iPhone 13 mini, iPhone 13 Pro, iPhone 13 Pro Max; iPhone 14, iPhone 14 Plus; iPhone 16e; iPhone 17e |
 | Dynamic Island | iPhone 14 Pro, iPhone 14 Pro Max; all iPhone 15 models; iPhone 16, iPhone 16 Plus, iPhone 16 Pro, iPhone 16 Pro Max; iPhone 17, iPhone 17 Pro, iPhone 17 Pro Max; iPhone Air |
 | Smaller Dynamic Island | iPhone 18 Pro, iPhone 18 Pro Max |
@@ -14,6 +14,7 @@ Built-in bezels use the display cutout type of the selected model. Their shapes 
 
 ## Apple sources
 
+- [iPhone XR technical specifications](https://support.apple.com/en-us/111868) and [iPhone 11 technical specifications](https://support.apple.com/en-us/111865) show the attached notch and list the shared 828×1792 display. Their installed CoreSimulator device capabilities report a 2× scale and 41.5-point screen corner radius (83 pixels). These profiles were checked on September 28, 2026.
 - [Identify your iPhone model](https://support.apple.com/en-us/108044) includes front views and identifies the models with Dynamic Island. Its iPhone 18 Pro and iPhone 18 Pro Max descriptions explicitly identify a smaller Dynamic Island. Its iPhone SE description identifies the Home button and 4.7-inch display.
 - [Apple introduces iPhone 13 and iPhone 13 mini](https://www.apple.com/newsroom/2021/09/apple-introduces-iphone-13-and-iphone-13-mini/) describes a redesigned, smaller TrueDepth camera system compared with the preceding generation.
 - [Apple unveils iPhone 13 Pro and iPhone 13 Pro Max](https://www.apple.com/newsroom/2021/09/apple-unveils-iphone-13-pro-and-iphone-13-pro-max-more-pro-than-ever-before/) describes a 20 percent smaller **area** for the TrueDepth system. This does not establish an exact reduction in notch width or provide cutout pixel dimensions.
